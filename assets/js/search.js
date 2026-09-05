@@ -386,7 +386,7 @@
       /* فحص صحة TMDB بالتوازي — عشان نفرّق بين «ما فيه نتيجة» و«المفتاح ميت» */
       if (CS.hasKey()) {
         jobs.push(
-          CS.tmdb.req('/configuration', {})
+          CS.tmdb.req('/configuration', {}, { fresh: true })
             .then(function () { return []; })
             .catch(function (e) { meta.tmdbError = CS.tmdb.explain(e); return []; })
         );
@@ -461,13 +461,15 @@
 
     /* نتحقق أولًا إن TMDB يرد فعلًا، عشان نفرّق بين «ما فيه نتائج»
        و«المفتاح ميت / الشبكة حاجبة» ونقولها للمستخدم بدل شاشة فاضية */
-    return CS.tmdb.req('/configuration', {}).then(function () {
-      return buildRows();
-    }).catch(function (err) {
-      var e = new Error('TMDB_DOWN');
-      e.reason = CS.tmdb.explain(err);
-      throw e;
-    });
+    /* fresh لأن الرد المخزّن كان يخفي انقطاعًا يصير أثناء الجلسة،
+       و catch قبل buildRows عشان ما نسمّي أخطاء الكود «TMDB مقطوع» */
+    return CS.tmdb.req('/configuration', {}, { fresh: true })
+      .catch(function (err) {
+        var e = new Error('TMDB_DOWN');
+        e.reason = CS.tmdb.explain(err);
+        throw e;
+      })
+      .then(buildRows);
   }
 
   function buildRows() {

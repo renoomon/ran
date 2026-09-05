@@ -42,7 +42,9 @@
   /* ---------- البطاقة ---------- */
 
   function itemKey(item) {
-    if (item.source === 'wiki') return 'w/' + (item.wikiLang || 'ar') + '/' + item.wikiTitle;
+    if (item.source === 'wiki') {
+      return 'w/' + (item.wikiLang || 'ar') + '/' + encodeURIComponent(item.wikiTitle || '');
+    }
     return item.type + '/' + item.id;
   }
 
@@ -74,10 +76,12 @@
     return '' +
       '<div class="vote' + cls + '">' +
         '<button class="vote__b vote__up' + (v === 1 ? ' is-on' : '') + '" data-vote="1" data-item="' + k + '" ' +
-          'aria-pressed="' + (v === 1 ? 'true' : 'false') + '" title="عجبني — يظهر في الاستكشاف">' +
+          'aria-pressed="' + (v === 1 ? 'true' : 'false') + '" aria-label="عجبني" ' +
+          'title="عجبني — يظهر في الاستكشاف">' +
           '<span aria-hidden="true">👍</span>' + (big ? '<b>عجبني</b>' : '') + '</button>' +
         '<button class="vote__b vote__down' + (v === -1 ? ' is-on' : '') + '" data-vote="-1" data-item="' + k + '" ' +
-          'aria-pressed="' + (v === -1 ? 'true' : 'false') + '" title="ما عجبني — ما يتكرر لك">' +
+          'aria-pressed="' + (v === -1 ? 'true' : 'false') + '" aria-label="ما عجبني" ' +
+          'title="ما عجبني — ما يتكرر لك">' +
           '<span aria-hidden="true">👎</span>' + (big ? '<b>ما عجبني</b>' : '') + '</button>' +
       '</div>';
   }
@@ -374,7 +378,7 @@
       return '<b>🔴 TMDB ما رد</b>' +
         '<p>' + esc(meta.tmdbError) + '</p>' +
         '<div style="margin-top:1.2rem;display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap">' +
-        '<button class="btn" id="empty-test">🔍 افحص الاتصال</button></div>' +
+        '<button class="btn" data-diagnose>🔍 افحص الاتصال</button></div>' +
         '<p style="margin-top:1rem;font-size:.82rem">🟢 جرّب وضع «بوصف القصة» — يشتغل على ويكيبيديا بدون TMDB.</p>';
     }
 

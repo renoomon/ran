@@ -19,15 +19,20 @@
 
   /* التصنيفات الحرفية المعروفة عبر الدول */
   var MAP = {
-    /* أمريكا — أفلام */
+    /* أمريكا — أفلام ومسلسلات */
     'G': 0, 'TV-Y': 0, 'TV-Y7': 0, 'TV-G': 0,
     'PG': 1, 'TV-PG': 1,
     'PG-13': 2, 'TV-14': 2,
-    'R': 3, 'TV-MA': 3, 'MA15+': 3,
-    'NC-17': 4, 'X': 4, 'R18+': 4, 'R18': 4, 'AO': 4, '18+': 4,
-    /* بريطانيا */
-    'U': 0, 'Uc': 0, '12A': 2, '12': 2, '15': 3, '18': 4,
-    /* أوروبا وغيرها */
+    'R': 3, 'TV-MA': 3,
+    'NC-17': 4, 'AO': 4, '18+': 4,
+    /* بريطانيا: 18 مقيّد للبالغين، R18 يُباع في محلات مرخّصة فقط ← إباحي */
+    'U': 0, 'Uc': 0, '12A': 2, '12': 2, '15': 3, '18': 4, 'R18': 5,
+    /* أستراليا: X 18+ إباحي صراحةً حسب تعريف TMDB */
+    'M': 2, 'MA15+': 3, 'MA 15+': 3, 'R18+': 4, 'R 18+': 4,
+    'X': 5, 'X18+': 5, 'X 18+': 5, 'RC': 4,
+    /* فرنسا والبرازيل */
+    'TP': 0, 'Livre': 0,
+    /* أوروبا وغيرها — أرقام صافية */
     '0': 0, '6': 0, '7': 0, '9': 1, '10': 1, '11': 1,
     '13': 2, '14': 2, '16': 3, '17': 3
   };
@@ -62,12 +67,35 @@
 
   /* ---------- سحب التصنيف من TMDB ---------- */
 
-  var cache = {};   /* 'movie:550' → { tier, cert, country } */
-  var pending = {};
+  /* 'SA|movie:550' → { tier, cert, country }
+     التصنيفات ما تتغير، فنخزّنها في المتصفح ونوفّر عشرات الطلبات كل زيارة */
+  var CACHE_KEY = 'cs.cert_cache';
+  var MAX_CACHE = 1500;
 
+  var cache = (function () {
+    var c = CS.store.get(CACHE_KEY, {});
+    return (c && typeof c === 'object' && !Array.isArray(c)) ? c : {};
+  })();
+
+  var pending = {};
+  var saveTimer;
+
+  function persist() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      var keys = Object.keys(cache);
+      if (keys.length > MAX_CACHE) {
+        keys.slice(0, keys.length - MAX_CACHE).forEach(function (k) { delete cache[k]; });
+      }
+      CS.store.set(CACHE_KEY, cache);
+    }, 800);
+  }
+
+  /* TMDB ما عنده تصنيفات للسعودية ولا الإمارات ولا مصر — تحققنا من قائمته.
+     فنبدأ بمنطقة المستخدم (لو صادف عندها لوح) ثم دول عندها تصنيفات فعلًا. */
   function order() {
     var r = CS.state.region || 'SA';
-    return [r, 'SA', 'AE', 'EG', 'US', 'GB'].filter(function (v, i, a) { return a.indexOf(v) === i; });
+    return [r, 'US', 'GB', 'AU', 'DE'].filter(function (v, i, a) { return a.indexOf(v) === i; });
   }
 
   function fromMovie(json) {
@@ -87,13 +115,22 @@
     return null;
   }
 
+  /* أنواع الإصدار عند TMDB: ٣ سينمائي · ٢ محدود · ٤ رقمي · ٥ مادي · ٦ تلفزيوني · ١ عرض أول.
+     ترتيب المصفوفة غير مضمون، فناخذ التصنيف السينمائي أولًا لا الأول في القائمة. */
+  var TYPE_PREF = [3, 2, 4, 5, 6, 1];
+
   function pickCert(block) {
     if (!block) return '';
-    var dates = block.release_dates || [];
-    for (var i = 0; i < dates.length; i++) {
-      if ((dates[i].certification || '').trim()) return dates[i].certification.trim();
+    var dates = (block.release_dates || []).filter(function (d) {
+      return (d.certification || '').trim();
+    });
+    if (!dates.length) return '';
+
+    for (var i = 0; i < TYPE_PREF.length; i++) {
+      var hit = dates.filter(function (d) { return d.type === TYPE_PREF[i]; })[0];
+      if (hit) return hit.certification.trim();
     }
-    return '';
+    return dates[0].certification.trim();
   }
 
   function fromTv(json) {
@@ -122,11 +159,15 @@
   }
 
   /* يجيب التصنيف لعنصر من الشبكة (طلب خفيف واحد، مع تخزين) */
+  function cacheKey(item) {
+    return (CS.state.region || 'SA') + '|' + item.type + ':' + item.id;
+  }
+
   function fetchFor(item) {
     if (!item || item.source !== 'tmdb') return Promise.resolve(null);
     if (item.adult) return Promise.resolve({ tier: 5, cert: 'Adult', country: '' });
 
-    var k = item.type + ':' + item.id;
+    var k = cacheKey(item);
     if (cache[k] !== undefined) return Promise.resolve(cache[k]);
     if (pending[k]) return pending[k];
 
@@ -144,9 +185,10 @@
         }
         cache[k] = out;
         delete pending[k];
+        persist();
         return out;
       })
-      .catch(function () { cache[k] = null; delete pending[k]; return null; });
+      .catch(function () { cache[k] = null; delete pending[k]; persist(); return null; });
 
     return pending[k];
   }
@@ -155,11 +197,12 @@
     if (!item) return undefined;
     if (item.adult) return { tier: 5, cert: 'Adult', country: '' };
     if (item.certTier != null) return { tier: item.certTier, cert: item.cert || '', country: '' };
-    return cache[item.type + ':' + item.id];
+    return cache[cacheKey(item)];
   }
 
   function put(item, info) {
-    cache[item.type + ':' + item.id] = info;
+    cache[cacheKey(item)] = info;
+    persist();
   }
 
   /* ---------- فلتر المستوى ---------- */
@@ -174,7 +217,7 @@
     family: { label: 'عائلي فقط',    min: 0, max: 1 },
     teen:   { label: '+13 وأقل',     min: 0, max: 2 },
     m17:    { label: '+17 فقط',      min: 3, max: 3, mature: true },
-    m18:    { label: '+18 فما فوق',  min: 4, max: 5, mature: true, needsAdult: true },
+    m18:    { label: '+18 (NC-17 وما يعادله)', min: 4, max: 4, mature: true },
     adult:  { label: 'إباحي صريح فقط', min: 5, max: 5, mature: true, needsAdult: true }
   };
 
@@ -209,19 +252,22 @@
     if (key === 'all') return true;
     if (info === undefined) return null;          /* التصنيف لسه ما وصل */
 
-    /* بلا تصنيف معروف: في وضع «للكبار فقط» نستبعده حتى ما يتسرّب محتوى عام */
-    if (info === null) return f.mature ? false : true;
+    /* بلا تصنيف معروف = ما نعرفه. أي فلتر غير «الكل» يستبعده،
+       وإلا يتسرّب محتوى غير مصنّف تحت «عائلي فقط» */
+    if (info === null) return false;
 
     return info.tier >= f.min && info.tier <= f.max;
   }
 
   /* TMDB يقبل فلترة التصنيف في /discover للأفلام فقط، وبتصنيفات أمريكا */
+  /* certification.lte وحده يسحب NR (الرتبة صفر) — أي غير المصنّف — فنحدّ الطرفين.
+     ولا نضع تصنيفًا لوضع «الإباحي»: علم adult محور منفصل تمامًا عن NC-17،
+     ولو فلترنا بـ NC-17 هناك رجعت أفلام عادية يرفضها passes() فتطلع النتيجة صفرًا. */
   var DISCOVER_CERT = {
-    family: { 'certification.lte': 'PG' },
-    teen:   { 'certification.lte': 'PG-13' },
+    family: { 'certification.gte': 'G', 'certification.lte': 'PG' },
+    teen:   { 'certification.gte': 'G', 'certification.lte': 'PG-13' },
     m17:    { certification: 'R' },
-    m18:    { certification: 'NC-17' },
-    adult:  { certification: 'NC-17' }
+    m18:    { 'certification.gte': 'NC-17' }
   };
 
   function discoverCert(type) {

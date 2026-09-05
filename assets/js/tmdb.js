@@ -178,9 +178,10 @@
     var params = {
       sort_by: 'popularity.desc',
       include_adult: allowAdult(),
-      'vote_count.gte': 30,
       page: page || 1
     };
+    /* حد الأصوات يرفع الجودة، لكن أعمال الكبار ما توصله أبدًا فنسقطه هناك */
+    if (!allowAdult()) params['vote_count.gte'] = 30;
     Object.keys(extra || {}).forEach(function (k) {
       if (extra[k] !== undefined && extra[k] !== null && extra[k] !== '') params[k] = extra[k];
     });

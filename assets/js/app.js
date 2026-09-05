@@ -9,7 +9,10 @@
   var $  = function (sel, ctx) { return (ctx || document).querySelector(sel); };
   var $$ = function (sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); };
 
-  var LIM = CS.config.limits;
+  /* لو config.js نفسه هو الملف القديم/الفاشل، لازم app.js يكمل تحميله
+     عشان يقدر يعرض شريط «نسختك قديمة» بدل ما يموت بصمت */
+  var LIM = (CS.config && CS.config.limits) ||
+            { pageSize: 24, suggest: 7, history: 12, wikiSearch: 14, wikiResolve: 10, keywordSeeds: 3 };
 
   /* مخزن مؤقت للعناصر المعروضة عشان نرجع لها بسرعة */
   var itemCache = {};
@@ -34,7 +37,6 @@
       var el = $('#view-' + v);
       if (el) el.hidden = v !== name;
     });
-    document.body.classList.toggle('is-detail', name === 'detail');
   }
 
   /* ============================================================
@@ -84,18 +86,33 @@
 
     CS.search.discoverRows().then(function (rows) {
       if (CS.state.view !== 'home') return;
-      if (!rows.length) {
-        wrap.innerHTML = '<div class="empty"><b>🟡 ما فيه محتوى يعرض</b>' +
-          '<p>غالبًا فلتر التصنيف العمري ضيّق. جرّب «كل التصنيفات».</p></div>';
-        return;
-      }
-      var all = [];
-      wrap.innerHTML = rows.map(function (r) {
-        remember(r.items);
-        all = all.concat(r.items);
-        return CS.ui.row(r.title, r.hint, r.items.slice(0, 20));
-      }).join('');
-      hydrateCerts(wrap, all);
+
+      /* الفلتر العمري لازم يشتغل هنا كمان، مو بس في النتائج —
+         صفوف الرائج والسينما تجي من TMDB بلا فلترة عمرية أصلًا */
+      var pre = CS.certs.currentFilter() === 'all'
+        ? Promise.resolve()
+        : ensureCerts(rows.reduce(function (a, r) { return a.concat(r.items); }, []), 120);
+
+      return pre.then(function () {
+        if (CS.state.view !== 'home') return;
+
+        if (CS.certs.currentFilter() !== 'all') {
+          rows = rows.map(function (r) {
+            return { title: r.title, hint: r.hint,
+                     items: r.items.filter(function (it) { return CS.certs.passes(it) === true; }) };
+          }).filter(function (r) { return r.items.length >= 2; });
+        }
+
+        if (!rows.length) { emptyDiscover(wrap); return; }
+
+        var all = [];
+        wrap.innerHTML = rows.map(function (r) {
+          remember(r.items);
+          all = all.concat(r.items);
+          return CS.ui.row(r.title, r.hint, r.items.slice(0, 20));
+        }).join('');
+        hydrateCerts(wrap, all);
+      });
     }).catch(function (err) {
       if (CS.state.view !== 'home') return;
       var why = err && err.reason ? err.reason : 'سبب غير معروف';
@@ -103,13 +120,29 @@
         '<div class="empty"><b>🔴 ما قدرت أوصل لـ TMDB</b>' +
         '<p>' + CS.util.esc(why) + '</p>' +
         '<div style="margin-top:1.2rem;display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap">' +
-        '<button class="btn" id="empty-test">🔍 افحص الاتصال</button>' +
-        '<button class="btn btn--ghost" id="empty-retry">أعد المحاولة</button></div>' +
+        '<button class="btn" data-diagnose>🔍 افحص الاتصال</button>' +
+        '<button class="btn btn--ghost" data-retry-home>أعد المحاولة</button></div>' +
         '<p style="margin-top:1rem;font-size:.82rem">🟢 البحث بوصف القصة (ويكيبيديا) يضل شغّالًا — جرّبه من فوق.</p></div>';
-
-      var t = $('#empty-test'); if (t) t.addEventListener('click', function () { openSettings(); testConnection(); });
-      var r2 = $('#empty-retry'); if (r2) r2.addEventListener('click', renderHome);
     });
+  }
+
+  /* لا صفوف بعد الفلترة — نشرح السبب الحقيقي حسب الفلتر المختار */
+  function emptyDiscover(wrap) {
+    var key = CS.certs.currentFilter();
+    var label = CS.certs.current().label;
+
+    if (key === 'adult') {
+      wrap.innerHTML = '<div class="empty"><b>🔥 وضع «إباحي صريح فقط»</b>' +
+        '<p>TMDB ما يوفّر تصفّحًا لهذا المحتوى — ما فيه طريقة تطلب منه «الإباحي فقط»، ' +
+        'وأغلب هذي الأعمال بلا بوسترات ولا ملخصات.</p>' +
+        '<p style="margin-top:.8rem">الطريقة الوحيدة اللي تشتغل: <b>ابحث باسم صريح</b> من الخانة فوق ' +
+        'وهو بيضمّه للنتائج.</p></div>';
+      return;
+    }
+
+    wrap.innerHTML = '<div class="empty"><b>🟡 ما فيه شي يطابق «' + CS.util.esc(label) + '»</b>' +
+      '<p>هذا الفلتر يعرض تصنيفه فقط، ويستبعد أي عمل TMDB ما عنده تصنيف عمري له.</p>' +
+      '<div style="margin-top:1.2rem"><button class="btn" data-cert-all>رجّعني لكل التصنيفات</button></div></div>';
   }
 
   /* ============================================================
@@ -134,7 +167,9 @@
       if (f.minRating && (it.rating || 0) < f.minRating) return false;
       if (f.yearFrom && (!it.year || it.year < f.yearFrom)) return false;
       if (f.yearTo && (!it.year || it.year > f.yearTo)) return false;
-      if (CS.certs.passes(it) === false) return false;
+      /* مع فلتر عمري، ما نعرض إلا اللي تأكّد تصنيفه — «غير معروف» يُستبعد */
+      if (CS.certs.currentFilter() === 'all') { if (CS.certs.passes(it) === false) return false; }
+      else if (CS.certs.passes(it) !== true) return false;
       return true;
     });
 
@@ -156,7 +191,7 @@
     /* الفلتر العمري يحتاج التصنيفات جاهزة قبل ما نقرر إيش نخفي */
     var pre = CS.certs.currentFilter() === 'all'
       ? Promise.resolve()
-      : ensureCerts(CS.state.results, 80);
+      : ensureCerts(CS.state.results, CS.state.shown + LIM.pageSize);
 
     pre.then(function () {
       var filtered = applyFilters(CS.state.results.slice());
@@ -167,6 +202,7 @@
 
         var meta = CS.state.meta || {};
         if (CS.certs.currentFilter() !== 'all') meta.certFiltered = CS.certs.current().label;
+        else delete meta.certFiltered;
 
         empty.innerHTML = CS.state.results.length
           ? '<b>🟡 الفلاتر ضيّقة</b><p>ما فيه نتيجة تطابق الفلاتر الحالية' +
@@ -175,9 +211,6 @@
           : CS.ui.emptyHtml(CS.state.query, meta);
         more.hidden = true;
         $('#results-meta').textContent = buildMetaText(0);
-
-        var t2 = $('#empty-test');
-        if (t2) t2.addEventListener('click', function () { openSettings(); testConnection(); });
         return;
       }
 
@@ -449,6 +482,7 @@
         fullPlot: plot,
         plotLang: lang
       };
+      remember([d]);   /* بدونه أزرار 👍/👎 تصير ميتة على الروابط المشاركة */
       panel.innerHTML = CS.ui.detail(d, extra);
       window.scrollTo(0, 0);
       detailCtx = { d: d, extra: extra, token: token };
@@ -656,13 +690,17 @@
 
   var suppressRoute = false;
 
+  function decodeSafe(s) {
+    try { return decodeURIComponent(s); } catch (e) { return s; }
+  }
+
   function parseHash() {
     var h = location.hash.slice(1).replace(/^\//, '');
     if (!h) return { name: 'home' };
     var parts = h.split('/');
 
     if (parts[0] === 's' && parts.length >= 3) {
-      return { name: 'search', mode: parts[1], query: decodeURIComponent(parts.slice(2).join('/')) };
+      return { name: 'search', mode: parts[1], query: decodeSafe(parts.slice(2).join('/')) };
     }
     /* #/work/movie/550 · #/work/w/ar/العنوان */
     if (parts[0] === 'work') parts = parts.slice(1);
@@ -671,7 +709,7 @@
       return { name: 'detail', type: parts[0], id: parts[1] };
     }
     if (parts[0] === 'w' && parts.length >= 3) {
-      return { name: 'wiki', lang: parts[1], title: decodeURIComponent(parts.slice(2).join('/')) };
+      return { name: 'wiki', lang: parts[1], title: decodeSafe(parts.slice(2).join('/')) };
     }
     if (parts[0] === 'liked' || parts[0] === 'fav') return { name: 'liked' };
     return { name: 'home' };
@@ -698,11 +736,17 @@
     hideSuggest();
     var here = parseHash().name;
     if (here !== 'detail' && here !== 'wiki') CS.state.backTo = location.hash || '#/';
-    location.hash = '#/work/' + key;
+    var next = '#/work/' + key;
+    if (location.hash !== next) ourSteps++;
+    location.hash = next;
   }
 
+  /* نعدّ خطواتنا نحن فقط — history.length يعدّ التبويب كله،
+     فزائر جاء من رابط مشارَك كان زر الرجوع يطلّعه برّا الموقع */
+  var ourSteps = 0;
+
   function goBack() {
-    if (history.length > 1) { history.back(); return; }
+    if (ourSteps > 0) { ourSteps--; history.back(); return; }
     location.hash = CS.state.backTo || '#/';
   }
 
@@ -763,6 +807,7 @@
     });
 
     $('#q').addEventListener('focus', function () {
+      suggestOff = false;
       if (this.value.trim().length >= 2) runSuggest(this.value.trim());
     });
 
@@ -818,6 +863,9 @@
       $('#min-rating').value = '0';
       $('#year-from').value = '';
       $('#year-to').value = '';
+      CS.store.set(CS.KEYS.certTier, 'all');
+      CS.store.set(CS.KEYS.adultOn, false);
+      $$('.cert-filter').forEach(function (s) { s.value = 'all'; });
       CS.state.shown = LIM.pageSize;
       paintResults();
     });
@@ -833,7 +881,13 @@
       if (vote) { e.preventDefault(); handleVote(vote); return; }
 
       var open = e.target.closest('[data-open]');
-      if (open) { e.preventDefault(); goDetail(open.dataset.open); return; }
+      if (open) {
+        /* نترك الضغط المعدّل للمتصفح عشان «افتح في تبويب جديد» يشتغل */
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+        e.preventDefault();
+        goDetail(open.dataset.open);
+        return;
+      }
 
       var trBtn = e.target.closest('[data-translate-plot]');
       if (trBtn) { translatePlot(trBtn); return; }
@@ -850,6 +904,13 @@
       }
 
       if (e.target.closest('[data-fatal-dismiss]')) { clearFatal(); return; }
+      if (e.target.closest('[data-diagnose]')) { openSettings(); testConnection(); return; }
+      if (e.target.closest('[data-retry-home]')) { renderHome(); return; }
+      if (e.target.closest('[data-cert-all]')) {
+        $$('.cert-filter').forEach(function (s) { s.value = 'all'; });
+        setCertFilter('all');
+        return;
+      }
       if (e.target.closest('[data-back]')) { goBack(); return; }
       if (e.target.closest('[data-close-settings]')) { closeSettings(); return; }
       if (e.target.closest('[data-route-home]')) { e.preventDefault(); location.hash = '#/'; return; }
@@ -934,6 +995,13 @@
     return REQUIRED.filter(function (m) { return !CS[m]; });
   }
 
+  /* هروب محلي — ما نعتمد على CS.util لأن util نفسه قد يكون هو الناقص */
+  function esc0(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   function fatal(title, detail, showReload) {
     var bar = document.getElementById('fatal');
     if (!bar) {
@@ -943,8 +1011,8 @@
       document.body.insertBefore(bar, document.body.firstChild);
     }
     bar.innerHTML =
-      '<b>🔴 ' + CS.util.esc(title) + '</b>' +
-      '<span>' + CS.util.esc(detail) + '</span>' +
+      '<b>🔴 ' + esc0(title) + '</b>' +
+      '<span>' + esc0(detail) + '</span>' +
       (showReload ? '<button class="notice__cta" id="fatal-reload">حدّث الصفحة الآن</button>' : '') +
       '<button class="notice__x" data-fatal-dismiss aria-label="إخفاء">&times;</button>';
     bar.hidden = false;
@@ -1006,10 +1074,13 @@
     }
   }
 
-  /* أي خطأ غير متوقع يظهر للمستخدم بدل ما تصير الصفحة ميتة بصمت */
+  /* أي خطأ غير متوقع يظهر للمستخدم بدل ما تصير الصفحة ميتة بصمت.
+     نبلّغ مرة وحدة فقط، وداخل try، عشان ما ندخل في عاصفة أخطاء متكررة. */
+  var reported = false;
   window.addEventListener('error', function (e) {
-    if (!e || !e.message) return;
-    fatal('صار خطأ في الصفحة', e.message, true);
+    if (reported || !e || !e.message) return;
+    reported = true;
+    try { fatal('صار خطأ في الصفحة', e.message, true); } catch (ignored) { /* آخر خط دفاع */ }
   });
 
   if (document.readyState === 'loading') {

@@ -592,7 +592,7 @@ main{ max-width:1360px; margin-inline:auto; padding:clamp(1.2rem, 3vw, 2.4rem) c
 
 /* شريط الخطأ الفادح — يظهر فوق كل شي لما تموت الصفحة */
 .fatal{
-  position:sticky; top:0; z-index:300;
+  position:relative; z-index:300;
   display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;
   padding:.75rem clamp(.9rem, 3vw, 2rem);
   background:linear-gradient(90deg, rgba(224,82,63,.22), rgba(224,82,63,.10));
