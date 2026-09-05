@@ -1,0 +1,126 @@
+/* ============================================================
+   links.js — بناء روابط مواقع الأفلام والمسلسلات الخارجية
+   يستخدم المعرّف المباشر لو توفّر، وإلا رابط بحث جاهز.
+   ============================================================ */
+
+(function (CS) {
+  'use strict';
+
+  function enc(s) { return encodeURIComponent(String(s || '').trim()); }
+
+  /**
+   * item المتوقع:
+   * { type, id, title, originalTitle, year, imdbId, tvdbId, wikiUrl, homepage, providersLink }
+   */
+  function build(item) {
+    var it = item || {};
+    var name = it.originalTitle || it.title || '';
+    var q = name + (it.year ? ' ' + it.year : '');
+    var isMovie = it.type !== 'tv';
+    var links = [];
+
+    function add(label, url, color, exact) {
+      if (url) links.push({ label: label, url: url, color: color, exact: !!exact });
+    }
+
+    /* ---------- قواعد البيانات الأساسية ---------- */
+
+    add('IMDb',
+      it.imdbId
+        ? 'https://www.imdb.com/title/' + enc(it.imdbId) + '/'
+        : 'https://www.imdb.com/find/?q=' + enc(q) + '&s=tt',
+      '#f5c518', !!it.imdbId);
+
+    add('TMDB',
+      it.source === 'tmdb' && it.id
+        ? 'https://www.themoviedb.org/' + (isMovie ? 'movie' : 'tv') + '/' + it.id
+        : 'https://www.themoviedb.org/search?query=' + enc(q),
+      '#01b4e4', it.source === 'tmdb');
+
+    if (isMovie) {
+      add('Letterboxd',
+        it.imdbId
+          ? 'https://letterboxd.com/imdb/' + enc(it.imdbId) + '/'
+          : 'https://letterboxd.com/search/films/' + enc(q) + '/',
+        '#00e054', !!it.imdbId);
+
+      add('Box Office Mojo',
+        it.imdbId
+          ? 'https://www.boxofficemojo.com/title/' + enc(it.imdbId) + '/'
+          : 'https://www.boxofficemojo.com/search/?q=' + enc(name),
+        '#c9a227', !!it.imdbId);
+    } else {
+      add('TheTVDB',
+        it.tvdbId
+          ? 'https://thetvdb.com/dereferrer/series/' + enc(it.tvdbId)
+          : 'https://thetvdb.com/search?query=' + enc(q),
+        '#6cd591', !!it.tvdbId);
+
+      add('TVmaze',
+        'https://www.tvmaze.com/search?q=' + enc(name), '#3c948b');
+    }
+
+    add('Rotten Tomatoes',
+      'https://www.rottentomatoes.com/search?search=' + enc(name), '#fa320a');
+
+    add('Metacritic',
+      'https://www.metacritic.com/search/' + enc(name) + '/', '#ffcc33');
+
+    add('Trakt',
+      'https://trakt.tv/search?query=' + enc(name), '#ed1c24');
+
+    add('Simkl',
+      'https://simkl.com/search/?q=' + enc(name), '#6f42c1');
+
+    add('MyAnimeList',
+      'https://myanimelist.net/search/all?q=' + enc(name), '#2e51a2');
+
+    /* ---------- وين تشوفه ---------- */
+
+    add('JustWatch',
+      it.providersLink || ('https://www.justwatch.com/' + (CS.state.region || 'sa').toLowerCase() + '/search?q=' + enc(name)),
+      '#ffdc00', !!it.providersLink);
+
+    add('Netflix',     'https://www.netflix.com/search?q=' + enc(name), '#e50914');
+    add('Prime Video', 'https://www.primevideo.com/search/ref=atv_nb_sug?phrase=' + enc(name), '#00a8e1');
+    add('Disney+',     'https://www.disneyplus.com/search?q=' + enc(name), '#1f6fd0');
+    add('Apple TV',    'https://tv.apple.com/search?term=' + enc(name), '#b8b8bd');
+    add('شاهد',        'https://shahid.mbc.net/ar/search?q=' + enc(name), '#00a3a1');
+    add('OSN+',        'https://stream.osn.com/en/search?q=' + enc(name), '#8a1f2c');
+
+    /* ---------- عربي وموسوعات ---------- */
+
+    add('elCinema',
+      'https://elcinema.com/search/?q=' + enc(name), '#e8b100');
+
+    add('ويكيبيديا',
+      it.wikiUrl || ('https://ar.wikipedia.org/w/index.php?search=' + enc(q) + '&ns0=1'),
+      '#cccccc', !!it.wikiUrl);
+
+    add('Wikidata',
+      'https://www.wikidata.org/w/index.php?search=' + enc(name), '#339966');
+
+    /* ---------- فيديو وبحث عام ---------- */
+
+    add('تريلر YouTube',
+      'https://www.youtube.com/results?search_query=' + enc(name + ' ' + (it.year || '') + ' trailer'),
+      '#ff0000');
+
+    if (it.homepage) add('الموقع الرسمي', it.homepage, '#e6b455', true);
+
+    add('بحث Google',
+      'https://www.google.com/search?q=' + enc(q + (isMovie ? ' فيلم' : ' مسلسل')), '#4285f4');
+
+    return links;
+  }
+
+  /* روابط مختصرة للبطاقات في الشبكة */
+  function quick(item) {
+    return build(item).filter(function (l) {
+      return ['IMDb', 'TMDB', 'JustWatch'].indexOf(l.label) !== -1;
+    });
+  }
+
+  CS.links = { build: build, quick: quick };
+
+})(window.CS);
