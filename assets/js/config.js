@@ -10,7 +10,7 @@ window.CS = window.CS || {};
   /* ---------- الثوابت ---------- */
 
   CS.config = {
-    version: '2.1.0',
+    version: '3.0.0',
     tmdb: {
       base: 'https://api.themoviedb.org/3',
       img: 'https://image.tmdb.org/t/p',
@@ -23,7 +23,7 @@ window.CS = window.CS || {};
       wikiSearch: 14,     // كم نتيجة نسحب من ويكيبيديا
       wikiResolve: 10,    // كم نتيجة نحاول نطابقها مع TMDB
       keywordSeeds: 3,    // كم كلمة مفتاحية نبني عليها الاستكشاف
-      pageSize: 24,       // كم بطاقة نعرض بالدفعة الواحدة
+      pageSize: 50,       // كم بطاقة نعرض بالدفعة الواحدة
       suggest: 7,
       history: 12
     },
@@ -49,7 +49,11 @@ window.CS = window.CS || {};
     taste:     'cs.taste',
     certTier:  'cs.cert_tier',
     adultOn:   'cs.adult_on',
-    omdbKey:   'cs.omdb_key'
+    omdbKey:   'cs.omdb_key',
+    fanartKey: 'cs.fanart_key',
+    traktKey:  'cs.trakt_key',
+    autoTr:    'cs.auto_tr',
+    tab:       'cs.tab'
   };
 
   /* ---------- التخزين المحلي (آمن ضد الأوضاع الخاصة) ---------- */

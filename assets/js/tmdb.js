@@ -130,16 +130,10 @@
     return req('/search/multi', {
       query: query, page: page || 1, include_adult: allowAdult()
     }).then(function (json) {
-      var people = (json.results || []).filter(function (r) { return r.media_type === 'person'; });
-      var items = normalizeList(json.results);
-
-      /* أعمال الأشخاص المطابقين تدخل كنتائج ذات صلة */
-      people.slice(0, 2).forEach(function (p) {
-        normalizeList(p.known_for || []).forEach(function (k) {
-          k.viaPerson = p.name;
-          items.push(k);
-        });
-      });
+      /* الأعمال فقط — الأشخاص وملفاتهم ما يظهرون في النتائج */
+      var items = normalizeList((json.results || []).filter(function (r) {
+        return r.media_type !== 'person';
+      }));
       return { items: items, total: json.total_results || 0, pages: json.total_pages || 1 };
     });
   }
@@ -178,6 +172,7 @@
     var params = {
       sort_by: 'popularity.desc',
       include_adult: allowAdult(),
+      include_video: false,
       page: page || 1
     };
     /* حد الأصوات يرفع الجودة، لكن أعمال الكبار ما توصله أبدًا فنسقطه هناك */
@@ -227,9 +222,9 @@
 
         /* الطاقم */
         var credits = raw.credits || raw.aggregate_credits || {};
-        base.cast = (credits.cast || []).slice(0, 14).map(function (c) {
+        base.cast = (credits.cast || []).slice(0, 16).map(function (c) {
           var role = c.character || ((c.roles || [])[0] || {}).character || '';
-          return { name: c.name, role: role, photo: img(c.profile_path, CFG.profile) };
+          return { id: c.id, name: c.name, role: role, photo: img(c.profile_path, CFG.profile) };
         });
         base.directors = (credits.crew || [])
           .filter(function (c) { return c.job === 'Director' || c.job === 'Series Director'; })
@@ -279,6 +274,14 @@
         base.keywords = ((raw.keywords || {}).keywords || (raw.keywords || {}).results || [])
           .map(function (k) { return { id: k.id, name: k.name }; });
 
+        /* وسوم المحتوى الحسّي من الكلمات المفتاحية الحقيقية */
+        if (CS.certs && CS.certs.heatOf) {
+          base.descriptors = CS.certs.descriptorsOf(
+            type === 'movie' ? raw.release_dates : raw.content_ratings, type);
+          base.heat = CS.certs.heatOf(base.keywords, base.adult, base.descriptors);
+          CS.certs.putHeat(base, base.heat);
+        }
+
         /* التصنيف العمري — جاهز من نفس الطلب بلا نداء إضافي */
         var certInfo = CS.certs ? CS.certs.fromDetails(raw, type, base.adult) : null;
         if (certInfo) {
@@ -326,6 +329,52 @@
   }
 
   /* ---------- اختبار المفتاح ---------- */
+
+  /* المشابهات/الترشيحات مع رقم الصفحة — عشان «اعرض المزيد» يشتغل */
+  function relatedPage(type, id, kind, page) {
+    return req('/' + type + '/' + id + '/' + kind, { page: page || 1 })
+      .then(function (json) {
+        return {
+          items: normalizeList(json.results || [], type),
+          page: json.page || 1,
+          pages: json.total_pages || 1
+        };
+      })
+      .catch(function () { return { items: [], page: 1, pages: 1 }; });
+  }
+
+  /* ---------- الأشخاص ---------- */
+
+  function person(id) {
+    return req('/person/' + id, { append_to_response: 'combined_credits,external_ids' })
+      .then(function (raw) {
+        var credits = ((raw.combined_credits || {}).cast || [])
+          .map(function (c) { return normalize(c, c.media_type); })
+          .filter(Boolean)
+          .filter(function (c) { return c.poster; })
+          .sort(function (a, b) { return (b.popularity || 0) - (a.popularity || 0); });
+
+        var seen = {};
+        credits = credits.filter(function (c) {
+          var k = c.type + ':' + c.id;
+          if (seen[k]) return false;
+          seen[k] = true;
+          return true;
+        });
+
+        return {
+          id: raw.id,
+          name: raw.name || '',
+          photo: img(raw.profile_path, CFG.profile),
+          job: raw.known_for_department || '',
+          birthday: raw.birthday || '',
+          place: raw.place_of_birth || '',
+          bio: raw.biography || '',
+          imdbId: (raw.external_ids || {}).imdb_id || '',
+          works: credits
+        };
+      });
+  }
 
   function testKey(key) {
     var prev = CS.state.apiKey;
@@ -407,6 +456,8 @@
     topRated: topRated,
     nowPlaying: nowPlaying,
     airingToday: airingToday,
+    relatedPage: relatedPage,
+    person: person,
     testKey: testKey,
     diagnose: diagnose,
     explain: explain

@@ -363,7 +363,7 @@
     var q = String(query || '').trim();
     if (!q) return Promise.resolve({ items: [], meta: {} });
 
-    mode = mode || 'auto';
+    mode = 'auto';   /* وضع واحد ذكي — أزلنا اختيار الأنماط */
     var intent = mode === 'auto' ? detectIntent(q) : mode;
     var isAr = CS.util.isArabic(q);
     var meta = { query: q, mode: mode, intent: intent, engines: [], translated: '', noKey: !CS.hasKey() };
@@ -375,13 +375,10 @@
       if (qEn && qEn !== q) meta.translated = qEn;
 
       var jobs = [];
-      var wantTitle = (mode === 'title') || (mode === 'auto');
-      var wantPlot  = (mode === 'plot')  || (mode === 'auto' && intent !== 'title');
-      /* الثيمة تخدم وصف القصة — على بحث بالاسم تجيب ضجيج فقط */
-      var wantTheme = (mode === 'theme') || (mode === 'auto' && intent !== 'title');
-
-      /* بحث بالاسم بالعربي: ويكيبيديا العربية أقوى مصدر لمطابقة العنوان */
-      if (mode === 'auto' && intent === 'title') wantPlot = isAr || CS.util.words(q).length >= 3;
+      /* الاسم دائمًا، والقصة دائمًا (هي جوهر الموقع)، والثيمة للأوصاف فقط */
+      var wantTitle = true;
+      var wantPlot  = true;
+      var wantTheme = intent !== 'title';
 
       /* فحص صحة TMDB بالتوازي — عشان نفرّق بين «ما فيه نتيجة» و«المفتاح ميت» */
       if (CS.hasKey()) {
@@ -394,7 +391,7 @@
 
       if (wantTitle) { meta.engines.push('title'); jobs.push(engineTitle(q, qEn)); }
       if (wantPlot)  {
-        var asTitle = (mode === 'auto' && intent === 'title');
+        var asTitle = (intent === 'title');
         meta.engines.push(asTitle ? 'wikiTitle' : 'plot');
         jobs.push(enginePlot(q, qEn, asTitle));
       }

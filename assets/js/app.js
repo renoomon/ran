@@ -1,6 +1,6 @@
 /* ============================================================
-   app.js — التوجيه، الأحداث، وربط كل شي مع بعض
-   الصفحات: الاستكشاف · النتائج · العمل (صفحة كاملة) · عجبني
+   app.js — RANHUB: التوجيه، الأحداث، وربط كل شي مع بعض
+   الصفحات: الاستكشاف · النتائج · العمل · الشخص · عجبني
    ============================================================ */
 
 (function (CS) {
@@ -12,18 +12,22 @@
   /* لو config.js نفسه هو الملف القديم/الفاشل، لازم app.js يكمل تحميله
      عشان يقدر يعرض شريط «نسختك قديمة» بدل ما يموت بصمت */
   var LIM = (CS.config && CS.config.limits) ||
-            { pageSize: 24, suggest: 7, history: 12, wikiSearch: 14, wikiResolve: 10, keywordSeeds: 3 };
+            { pageSize: 50, suggest: 7, history: 12, wikiSearch: 14, wikiResolve: 10, keywordSeeds: 3 };
 
-  /* مخزن مؤقت للعناصر المعروضة عشان نرجع لها بسرعة */
+  var PAGE = 50;                /* كم عمل نضيف مع كل «اعرض المزيد» */
   var itemCache = {};
 
   function remember(list) {
-    (list || []).forEach(function (it) {
-      if (it) itemCache[CS.ui.itemKey(it)] = it;
-    });
+    (list || []).forEach(function (it) { if (it) itemCache[CS.ui.itemKey(it)] = it; });
   }
 
   function attrEsc(v) { return String(v).replace(/(["\\])/g, '\\$1'); }
+
+  function esc0(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
 
   /* الحافظة تُرفض في سفاري والسياقات غير الآمنة — لازم بديل ما يفشل بصمت */
   function copyLink(url) {
@@ -38,25 +42,20 @@
         var ok = document.execCommand('copy');
         document.body.removeChild(ta);
         CS.ui.toast(ok ? '🔗 انتسخ الرابط' : url);
-      } catch (e) {
-        CS.ui.toast(url);
-      }
+      } catch (e) { CS.ui.toast(url); }
     }
-
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url)
-        .then(function () { CS.ui.toast('🔗 انتسخ الرابط'); })
-        .catch(fallback);
+      navigator.clipboard.writeText(url).then(function () { CS.ui.toast('🔗 انتسخ الرابط'); }).catch(fallback);
       return;
     }
     fallback();
   }
 
   /* ============================================================
-     تبديل الصفحات
+     الصفحات
      ============================================================ */
 
-  var VIEWS = ['home', 'results', 'liked', 'detail'];
+  var VIEWS = ['home', 'results', 'liked', 'detail', 'person'];
 
   function showView(name) {
     CS.state.view = name;
@@ -67,10 +66,9 @@
   }
 
   /* ============================================================
-     التصنيف العمري — تحميل كسول للشبكات
+     التصنيف ووسوم المحتوى — تحميل كسول
      ============================================================ */
 
-  /* يجيب تصنيفات دفعة من العناصر (مع تخزين داخلي) */
   function ensureCerts(list, cap) {
     var need = (list || []).slice(0, cap || 60).filter(function (it) {
       return it.source === 'tmdb' && CS.certs.cachedFor(it) === undefined;
@@ -79,212 +77,222 @@
     return CS.util.pool(need, 6, function (it) { return CS.certs.fetchFor(it); });
   }
 
-  /* يرسم الشارات على البطاقات المعروضة بعد ما توصل التصنيفات */
-  function paintCertBadges(root, list) {
+  /* وسوم المحتوى تُسحب فقط في أقسام الكبار — فيها الفائدة، وتوفّر طلبات */
+  function ensureHeat(list, cap) {
+    if (!CS.certs.matureOnly()) return Promise.resolve();
+    var need = (list || []).slice(0, cap || 40).filter(function (it) {
+      return it.source === 'tmdb' && CS.certs.cachedHeat(it) === undefined;
+    });
+    if (!need.length) return Promise.resolve();
+    return CS.util.pool(need, 6, function (it) { return CS.certs.fetchHeat(it); });
+  }
+
+  function paintBadges(root, list) {
     (list || []).forEach(function (it) {
+      var cardEl = root.querySelector('.card[data-key="' + attrEsc(CS.ui.itemKey(it)) + '"]');
+      if (!cardEl) return;
+      var poster = cardEl.querySelector('.card__poster');
+      if (!poster) return;
+
       var info = CS.certs.cachedFor(it);
-      if (!info) return;
-      var poster = root.querySelector('.card[data-key="' + attrEsc(CS.ui.itemKey(it)) + '"] .card__poster');
-      if (!poster || poster.querySelector('.card__cert')) return;
-      poster.insertAdjacentHTML('beforeend', CS.ui.certBadge(it));
+      if (info && !poster.querySelector('.card__cert')) {
+        poster.insertAdjacentHTML('beforeend', CS.ui.certBadge(it));
+      }
+      var heat = CS.certs.cachedHeat(it);
+      if (heat && heat.score && !poster.querySelector('.card__heat')) {
+        it.heat = heat;
+        poster.insertAdjacentHTML('beforeend',
+          '<div class="card__heat" title="' + attrEsc('وسوم TMDB: ' + heat.tags.join('، ')) +
+          '"><i style="width:' + heat.score + '%"></i></div>');
+      }
     });
   }
 
-  function hydrateCerts(root, list) {
-    ensureCerts(list).then(function () { paintCertBadges(root, list); });
+  function hydrate(root, list) {
+    Promise.all([ensureCerts(list), ensureHeat(list)])
+      .then(function () { paintBadges(root, list); });
   }
 
   /* ============================================================
-     الصفحة الرئيسية = الاستكشاف
+     الاستكشاف — شبكة واحدة بترقيم لا نهائي
      ============================================================ */
 
-  function paintTasteState() {
-    var el = $('#taste-state');
-    if (!el) return;
-    var counts = CS.taste.counts();
-    el.innerHTML = (counts.likes || counts.dislikes)
-      ? '🟢 ذوقك مبني على <b>' + counts.likes + '</b> عمل عجبك' +
-        (counts.dislikes ? ' و<b>' + counts.dislikes + '</b> ما عجبك' : '') +
-        ' — <button class="linkish" id="btn-reset-taste">صفّر ذوقي</button>'
-      : '🟡 اضغط 👍 على أي عمل، وهذي الصفحة تتحول لذوقك أنت.';
+  var TABS = {
+    all:      { title: '✨ كل الأعمال',   cert: 'all' },
+    movie:    { title: '🎬 أفلام',        cert: 'all' },
+    tv:       { title: '📺 مسلسلات',      cert: 'all' },
+    reality:  { title: '🎤 برامج واقعية', cert: 'all' },
+    doc:      { title: '🎥 وثائقي',       cert: 'all' },
+    mature:   { title: '🔞 +18 — تصنيف رسمي', cert: 'mature' },
+    erotic:   { title: '🌶️ إيروتيك',      cert: 'erotic' },
+    explicit: { title: '⛔ إباحي صريح',   cert: 'explicit' }
+  };
+
+  var feedBusy = false;
+
+  function currentTab() {
+    var el = $('.tab.is-active');
+    return el ? el.dataset.tab : 'all';
   }
 
-  function renderHome() {
-    showView('home');
-    var wrap = $('#home-rows');
+  function startFeed(tab) {
+    var conf = TABS[tab] || TABS.all;
 
-    paintTasteState();
+    /* أقسام الكبار تحتاج موافقة صريحة مرة وحدة */
+    if (conf.cert !== 'all' && !CS.store.get(CS.KEYS.adultOn, false)) {
+      var ok = window.confirm(
+        'قسم للبالغين فقط (+18)\n\n' +
+        'هذا القسم يعرض محتوى مصنّف +18 فقط، وما يعرض شي عام.\n' +
+        'تأكد إنك بالغ وإن استخدامه مسؤوليتك. تبي تفتحه؟'
+      );
+      if (!ok) { setTab('all'); return; }
+      CS.store.set(CS.KEYS.adultOn, true);
+    }
 
-    wrap.innerHTML = '<div class="grid">' + CS.ui.skeletons(12) + '</div>';
+    CS.store.set(CS.KEYS.certTier, conf.cert);
+    CS.store.set(CS.KEYS.tab, tab);
 
-    CS.search.discoverRows().then(function (rows) {
-      if (CS.state.view !== 'home') return;
+    $('#feed-title').textContent = conf.title;
+    $('#age-warn').hidden = conf.cert === 'all';
 
-      /* الفلتر العمري لازم يشتغل هنا كمان، مو بس في النتائج —
-         صفوف الرائج والسينما تجي من TMDB بلا فلترة عمرية أصلًا */
-      var pre = CS.certs.currentFilter() === 'all'
-        ? Promise.resolve()
-        : ensureCerts(rows.reduce(function (a, r) { return a.concat(r.items); }, []), 120);
+    CS.feed.reset({
+      tab: tab,
+      sort: $('#feed-sort').value,
+      origLang: $('#feed-lang').value,
+      minRating: +$('#feed-rating').value || 0
+    });
 
-      return pre.then(function () {
-        if (CS.state.view !== 'home') return;
+    $('#feed-grid').innerHTML = CS.ui.skeletons(18);
+    $('#feed-empty').hidden = true;
+    $('#feed-more').hidden = true;
+    loadFeed(true);
+  }
 
-        if (CS.certs.currentFilter() !== 'all') {
-          rows = rows.map(function (r) {
-            return { title: r.title, hint: r.hint,
-                     items: r.items.filter(function (it) { return CS.certs.passes(it) === true; }) };
-          }).filter(function (r) { return r.items.length >= 2; });
-        }
-
-        if (!rows.length) { emptyDiscover(wrap); return; }
-
-        var all = [];
-        wrap.innerHTML = rows.map(function (r) {
-          remember(r.items);
-          all = all.concat(r.items);
-          return CS.ui.row(r.title, r.hint, r.items.slice(0, 20));
-        }).join('');
-        hydrateCerts(wrap, all);
-      });
-    }).catch(function (err) {
-      if (CS.state.view !== 'home') return;
-      var why = err && err.reason ? err.reason : 'سبب غير معروف';
-      showTmdbProblem(why);
-      wrap.innerHTML =
-        '<div class="empty"><b>🔴 ما قدرت أوصل لـ TMDB</b>' +
-        '<p>' + CS.util.esc(why) + '</p>' +
-        '<div style="margin-top:1.2rem;display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap">' +
-        '<button class="btn" data-diagnose>🔍 افحص الاتصال</button>' +
-        '<button class="btn btn--ghost" data-retry-home>أعد المحاولة</button></div>' +
-        '<p style="margin-top:1rem;font-size:.82rem">🟢 البحث بوصف القصة (ويكيبيديا) يضل شغّالًا — جرّبه من فوق.</p></div>';
+  function setTab(tab) {
+    $$('.tab').forEach(function (t) {
+      var on = t.dataset.tab === tab;
+      t.classList.toggle('is-active', on);
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
     });
   }
 
-  /* لا صفوف بعد الفلترة — نشرح السبب الحقيقي حسب الفلتر المختار */
-  function emptyDiscover(wrap) {
-    var key = CS.certs.currentFilter();
-    var label = CS.certs.current().label;
+  function loadFeed(first) {
+    if (feedBusy) return;
+    feedBusy = true;
+    var btn = $('#btn-feed-more');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ يحمّل…'; }
 
-    if (key === 'adult') {
-      wrap.innerHTML = '<div class="empty"><b>🔥 وضع «إباحي صريح فقط»</b>' +
-        '<p>TMDB ما يوفّر تصفّحًا لهذا المحتوى — ما فيه طريقة تطلب منه «الإباحي فقط»، ' +
-        'وأغلب هذي الأعمال بلا بوسترات ولا ملخصات.</p>' +
-        '<p style="margin-top:.8rem">الطريقة الوحيدة اللي تشتغل: <b>ابحث باسم صريح</b> من الخانة فوق ' +
-        'وهو بيضمّه للنتائج.</p></div>';
-      return;
+    CS.feed.loadMore().then(function (res) {
+      feedBusy = false;
+      if (CS.state.view !== 'home') return;
+
+      var items = res.items;
+      remember(items);
+
+      if (!items.length) {
+        $('#feed-grid').innerHTML = '';
+        $('#feed-empty').hidden = false;
+        $('#feed-empty').innerHTML = emptyFeedHtml();
+        $('#feed-more').hidden = true;
+        return;
+      }
+
+      $('#feed-empty').hidden = true;
+      $('#feed-grid').innerHTML = CS.ui.cards(items);
+      $('#feed-count').textContent = items.length + ' عمل' + (res.exhausted ? ' — خلصت المادة' : '');
+      $('#feed-more').hidden = res.exhausted;
+      if (btn) { btn.disabled = false; btn.textContent = 'اعرض المزيد'; }
+      hydrate($('#feed-grid'), items);
+      if (first) window.scrollTo({ top: 0, behavior: 'smooth' });
+    }).catch(function (err) {
+      feedBusy = false;
+      if (btn) { btn.disabled = false; btn.textContent = 'اعرض المزيد'; }
+      if (CS.state.view !== 'home') return;
+      var why = err && err.message === 'NO_KEY' ? 'ما فيه مفتاح TMDB' : CS.tmdb.explain(err);
+      showTmdbProblem(why);
+      $('#feed-grid').innerHTML = '';
+      $('#feed-empty').hidden = false;
+      $('#feed-empty').innerHTML =
+        '<b>🔴 ما قدرت أوصل لـ TMDB</b><p>' + esc0(why) + '</p>' +
+        '<div style="margin-top:1.2rem;display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap">' +
+        '<button class="btn" data-diagnose>🔍 افحص الاتصال</button>' +
+        '<button class="btn btn--ghost" data-retry-home>أعد المحاولة</button></div>';
+    });
+  }
+
+  function emptyFeedHtml() {
+    var tab = currentTab();
+    if (tab === 'explicit') {
+      return '<b>⛔ قسم الإباحي الصريح</b>' +
+        '<p>TMDB ما يوفّر تصفّحًا لهذا المحتوى — ما فيه أي معامل يطلب «الإباحي فقط»، ' +
+        'وأغلب هذي الأعمال بلا بوستر ولا ملخّص أصلًا.</p>' +
+        '<p style="margin-top:.8rem">الطريقة الوحيدة اللي تشتغل: <b>ابحث باسم صريح</b> من الخانة فوق.</p>';
     }
-
-    wrap.innerHTML = '<div class="empty"><b>🟡 ما فيه شي يطابق «' + CS.util.esc(label) + '»</b>' +
-      '<p>هذا الفلتر يعرض تصنيفه فقط، ويستبعد أي عمل TMDB ما عنده تصنيف عمري له.</p>' +
-      '<div style="margin-top:1.2rem"><button class="btn" data-cert-all>رجّعني لكل التصنيفات</button></div></div>';
+    return '<b>🟡 ما فيه شي في هذا القسم</b>' +
+      '<p>جرّب توسّع الفلاتر — رجّع «اللغة الأصلية» لـ«كل اللغات» و«أقل تقييم» لـ«أي تقييم».</p>' +
+      '<div style="margin-top:1.2rem"><button class="btn" data-tab-all>رجّعني لقسم الكل</button></div>';
   }
 
   /* ============================================================
      النتائج
      ============================================================ */
 
-  function currentFilters() {
-    var active = $('.chip.is-active[data-filter-type]');
-    return {
-      type: active ? active.dataset.filterType : 'all',
-      sort: $('#sort-by').value,
-      minRating: +$('#min-rating').value || 0,
-      yearFrom: +$('#year-from').value || 0,
-      yearTo: +$('#year-to').value || 0
-    };
-  }
-
-  function applyFilters(list) {
-    var f = currentFilters();
-    var out = list.filter(function (it) {
-      if (f.type !== 'all' && it.type !== f.type) return false;
-      if (f.minRating && (it.rating || 0) < f.minRating) return false;
-      if (f.yearFrom && (!it.year || it.year < f.yearFrom)) return false;
-      if (f.yearTo && (!it.year || it.year > f.yearTo)) return false;
-      /* مع فلتر عمري، ما نعرض إلا اللي تأكّد تصنيفه — «غير معروف» يُستبعد */
-      if (CS.certs.currentFilter() === 'all') { if (CS.certs.passes(it) === false) return false; }
-      else if (CS.certs.passes(it) !== true) return false;
-      return true;
-    });
-
-    var sorters = {
-      relevance:  function (a, b) { return (b.score || 0) - (a.score || 0); },
-      rating:     function (a, b) { return (b.rating || 0) - (a.rating || 0); },
-      popularity: function (a, b) { return (b.popularity || 0) - (a.popularity || 0); },
-      newest:     function (a, b) { return (b.year || 0) - (a.year || 0); },
-      oldest:     function (a, b) { return (a.year || 9999) - (b.year || 9999); }
-    };
-    return out.sort(sorters[f.sort] || sorters.relevance);
-  }
+  var searchToken = 0;
 
   function paintResults() {
     var grid = $('#results-grid');
     var empty = $('#results-empty');
     var more = $('#loadmore-wrap');
+    var all = CS.state.results;
 
-    /* الفلتر العمري يحتاج التصنيفات جاهزة قبل ما نقرر إيش نخفي */
-    /* نجيب تصنيفات كل النتائج لا الظاهرة فقط، وإلا العدد يقفز مع كل «اعرض المزيد» */
-    var pre = CS.certs.currentFilter() === 'all'
-      ? Promise.resolve()
-      : ensureCerts(CS.state.results, 150);
+    var pre = CS.certs.currentFilter() === 'all' ? Promise.resolve() : ensureCerts(all, 150);
 
     pre.then(function () {
-      var filtered = applyFilters(CS.state.results.slice());
+      var list = all.filter(function (it) {
+        if (CS.certs.currentFilter() === 'all') return CS.certs.passes(it) !== false;
+        return CS.certs.passes(it) === true;
+      });
 
-      if (!filtered.length) {
+      if (!list.length) {
         grid.innerHTML = '';
         empty.hidden = false;
-
         var meta = CS.state.meta || {};
         if (CS.certs.currentFilter() !== 'all') meta.certFiltered = CS.certs.current().label;
         else delete meta.certFiltered;
-
-        empty.innerHTML = CS.state.results.length
-          ? '<b>🟡 الفلاتر ضيّقة</b><p>ما فيه نتيجة تطابق الفلاتر الحالية' +
-            (CS.certs.matureOnly() ? ' — فلتر «' + CS.util.esc(CS.certs.current().label) + '» يستبعد كل شي دونه' : '') +
-            '. اضغط «تصفير».</p>'
-          : CS.ui.emptyHtml(CS.state.query, meta);
+        empty.innerHTML = CS.ui.emptyHtml(CS.state.query, meta);
         more.hidden = true;
         $('#results-meta').textContent = buildMetaText(0);
         return;
       }
 
       empty.hidden = true;
-      var slice = filtered.slice(0, CS.state.shown);
+      var slice = list.slice(0, CS.state.shown);
       grid.innerHTML = CS.ui.cards(slice);
-      more.hidden = filtered.length <= CS.state.shown;
-      $('#results-meta').textContent = buildMetaText(filtered.length);
-      hydrateCerts(grid, slice);
+      more.hidden = list.length <= CS.state.shown;
+      $('#results-count').textContent = slice.length + ' من ' + list.length;
+      $('#results-meta').textContent = buildMetaText(list.length);
+      hydrate(grid, slice);
     });
   }
 
   function buildMetaText(count) {
     var m = CS.state.meta || {};
     var bits = [count + ' نتيجة'];
-    var names = { title: 'بالاسم', plot: 'بوصف القصة', theme: 'بالثيمة', wikiTitle: 'بالاسم في ويكيبيديا' };
-    if (m.engines && m.engines.length) {
-      bits.push('محركات: ' + m.engines.map(function (e) { return names[e] || e; }).join(' + '));
-    }
     if (m.translated) bits.push('جرّبت كمان بالإنجليزي: ' + m.translated);
     if (m.relatedOf) bits.push('+ أعمال قريبة من «' + m.relatedOf + '»');
     if (m.tmdbError) bits.push('🔴 TMDB ما رد: ' + m.tmdbError);
     return bits.join(' · ');
   }
 
-  var searchToken = 0;
-
-  function doSearch(query, mode, skipHash) {
+  function doSearch(query, skipHash) {
     query = String(query || '').trim();
-    if (!query) { renderHome(); return; }
+    if (!query) { location.hash = '#/'; return; }
 
-    mode = mode || CS.state.mode || 'auto';
     CS.state.query = query;
-    CS.state.mode = mode;
-    CS.store.set(CS.KEYS.mode, mode);
     CS.history.push(query);
 
     $('#q').value = query;
-    setModeChip(mode);
+    $('#btn-to-en').hidden = !CS.util.isArabic(query);
     suggestOff = true;
     hideSuggest();
     showView('results');
@@ -296,32 +304,48 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     if (!skipHash) {
-      var h = '#/s/' + mode + '/' + encodeURIComponent(query);
+      var h = '#/s/' + encodeURIComponent(query);
       if (location.hash !== h) { suppressRoute = true; location.hash = h; }
     }
 
     var token = ++searchToken;
 
-    CS.search.run(query, mode).then(function (res) {
+    CS.search.run(query).then(function (res) {
       if (token !== searchToken) return;
       CS.state.results = res.items;
       CS.state.meta = res.meta;
-      CS.state.shown = LIM.pageSize;
+      CS.state.shown = PAGE;
       remember(res.items);
-      /* نتائج ويكيبيديا تخفي فشل TMDB — نعلنه في الشريط فوق */
       if (res.meta.tmdbError) showTmdbProblem(res.meta.tmdbError); else refreshKeyNotice();
       paintResults();
     }).catch(function (err) {
       if (token !== searchToken) return;
       $('#results-grid').innerHTML = '';
       $('#results-empty').hidden = false;
-      $('#results-empty').innerHTML = '<b>🔴 صار خطأ في البحث</b><p>' +
-        CS.util.esc(err && err.message === 'BAD_KEY' ? 'مفتاح TMDB غير صالح — عدّله من الإعدادات.' : 'تحقق من اتصالك وجرّب مرة ثانية.') + '</p>';
+      $('#results-empty').innerHTML = '<b>🔴 صار خطأ في البحث</b><p>' + esc0(CS.tmdb.explain(err)) + '</p>';
+    });
+  }
+
+  /* حوّل بحثي للإنجليزي */
+  function searchInEnglish() {
+    var q = $('#q').value.trim();
+    if (!q) return;
+    var btn = $('#btn-to-en');
+    btn.disabled = true;
+    var was = btn.textContent;
+    btn.textContent = '⏳';
+
+    CS.wiki.toEnglish(q).then(function (en) {
+      btn.disabled = false;
+      btn.textContent = was;
+      if (!en || en === q) { CS.ui.toast('🟡 ما قدرت أترجم — جرّب بعدين'); return; }
+      CS.ui.toast('🔤 ' + en);
+      doSearch(en);
     });
   }
 
   /* ============================================================
-     صفحة «عجبني»
+     اللي عجبني + التصدير والاستيراد
      ============================================================ */
 
   function renderLiked() {
@@ -333,13 +357,12 @@
     $('#liked-grid').innerHTML = CS.ui.cards(likes);
     $('#liked-empty').hidden = likes.length > 0 || dis.length > 0;
     $('#liked-meta').textContent = (likes.length || dis.length)
-      ? likes.length + ' عمل عجبك' + (dis.length ? ' · ' + dis.length + ' ما عجبك' : '')
-      : '';
+      ? likes.length + ' عمل عجبك' + (dis.length ? ' · ' + dis.length + ' ما عجبك' : '') : '';
 
     $('#disliked-wrap').hidden = dis.length === 0;
     $('#disliked-grid').innerHTML = CS.ui.cards(dis);
 
-    hydrateCerts($('#view-liked'), likes.concat(dis));
+    hydrate($('#view-liked'), likes.concat(dis));
     updateLikeCount();
   }
 
@@ -350,17 +373,54 @@
     el.hidden = n === 0;
   }
 
+  function exportTaste() {
+    var data = {
+      app: 'RANHUB', version: CS.config.version, exportedAt: new Date().toISOString(),
+      likes: CS.taste.likes(), dislikes: CS.taste.dislikes()
+    };
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'ranhub-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    CS.ui.toast('⬇️ نزّلت ' + data.likes.length + ' إعجاب');
+  }
+
+  function importTaste(file) {
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var data = JSON.parse(String(reader.result));
+        var added = CS.taste.merge(data);
+        CS.ui.toast(added ? '⬆️ ضفت ' + added + ' عمل' : '🟡 ما فيه شي جديد في الملف');
+        renderLiked();
+      } catch (e) {
+        CS.ui.toast('🔴 الملف مو صالح — لازم يكون ملف تصدير من RANHUB');
+      }
+    };
+    reader.onerror = function () { CS.ui.toast('🔴 ما قدرت أقرأ الملف'); };
+    reader.readAsText(file);
+  }
+
   /* ============================================================
-     صفحة العمل (صفحة كاملة، مو نافذة)
+     صفحة العمل
      ============================================================ */
 
   var detailToken = 0;
   var detailCtx = null;
+  var related = { items: [], page: 0, exhausted: false, loading: false };
 
   function repaintStory() {
     var sec = $('#dt-story');
     if (sec && detailCtx) sec.innerHTML = CS.ui.storySection(detailCtx.d, detailCtx.extra);
   }
+
+  function autoTranslateOn() { return CS.store.get(CS.KEYS.autoTr, true) !== false; }
 
   function openDetail(type, id) {
     var token = ++detailToken;
@@ -368,6 +428,7 @@
     var panel = $('#detail-panel');
     panel.innerHTML = CS.ui.detailSkeleton();
     window.scrollTo(0, 0);
+    related = { items: [], page: 0, exhausted: false, loading: false };
 
     CS.tmdb.details(type, id).then(function (d) {
       if (token !== detailToken) return;
@@ -384,62 +445,97 @@
       } else {
         extra.summary = d.enOverview || d.overview || '';
         extra.summarySource = 'الملخص من TMDB (إنجليزي)';
+        if (autoTranslateOn() && extra.summary) extra.translating = true;
       }
 
       panel.innerHTML = CS.ui.detail(d, extra);
       remember([d]);
-      remember(d.similar);
-      remember(d.recommendations);
       window.scrollTo(0, 0);
-
       detailCtx = { d: d, extra: extra, token: token };
-      CS.taste.enrich(d);   /* نغني ملف الذوق بالكلمات المفتاحية */
+      CS.taste.enrich(d);
 
-      hydrateCerts(panel, (d.similar || []).concat(d.recommendations || []));
-
-      /* ما فيه ملخص عربي رسمي؟ نترجم الإنجليزي آليًا بالخلفية */
-      if (CS.state.lang === 'ar' && !arabic && extra.summary) {
+      if (CS.state.lang === 'ar' && !arabic && extra.summary && autoTranslateOn()) {
         CS.wiki.toArabic(extra.summary, 1200).then(function (ar) {
-          if (!ar || token !== detailToken) return;
-          extra.summary = ar;
-          extra.summarySource = 'الملخص من TMDB (ترجمة آلية)';
+          if (token !== detailToken) return;
+          extra.translating = false;
+          if (ar) { extra.summary = ar; extra.summarySource = 'الملخص من TMDB (ترجمة آلية)'; }
           repaintStory();
         });
       }
 
       attachWikiPlot(d, extra, token);
       attachSources(d, token);
+      loadRelated(d, token, true);
     }).catch(function (err) {
       if (token !== detailToken) return;
       panel.innerHTML = '<div class="dt__body"><div class="empty"><b>🔴 ما قدرت أفتح التفاصيل</b><p>' +
-        CS.util.esc(err && err.message === 'BAD_KEY' ? 'مفتاح TMDB غير صالح.' : 'جرّب مرة ثانية.') + '</p></div></div>';
+        esc0(CS.tmdb.explain(err)) + '</p></div></div>';
     });
   }
 
-  /* المصادر الإضافية: OMDb و TVmaze و Wikidata */
+  /* الأعمال ذات الصلة: مشابهات + ترشيحات، صفحة صفحة وبلا تكرار */
+  function loadRelated(d, token, first) {
+    if (related.loading || related.exhausted) return;
+    related.loading = true;
+    if (!first) {
+      var sec = $('#dt-related');
+      if (sec) sec.innerHTML = CS.ui.relatedSection(related.items, related.exhausted, true);
+    }
+
+    related.page += 1;
+    var p = related.page;
+
+    Promise.all([
+      CS.tmdb.relatedPage(d.type, d.id, 'recommendations', p),
+      CS.tmdb.relatedPage(d.type, d.id, 'similar', p)
+    ]).then(function (r) {
+      if (token !== detailToken) return;
+      related.loading = false;
+
+      var seen = {};
+      related.items.forEach(function (x) { seen[x.type + ':' + x.id] = true; });
+      seen[d.type + ':' + d.id] = true;
+
+      var added = 0;
+      r[0].items.concat(r[1].items).forEach(function (it) {
+        var k = it.type + ':' + it.id;
+        if (seen[k] || !it.poster) return;
+        if (it.adult && !CS.certs.adultAllowed()) return;
+        seen[k] = true;
+        related.items.push(it);
+        added++;
+      });
+
+      if (p >= Math.max(r[0].pages, r[1].pages) || (!added && p > 1)) related.exhausted = true;
+
+      remember(related.items);
+      var sec2 = $('#dt-related');
+      if (sec2) {
+        sec2.innerHTML = CS.ui.relatedSection(related.items, related.exhausted, false);
+        hydrate(sec2, related.items);
+      }
+      /* الصفحة الأولى قد ترجع قليلًا — نكمل تلقائيًا لين نوصل عددًا محترمًا */
+      if (first && related.items.length < 20 && !related.exhausted) loadRelated(d, token, true);
+    }).catch(function () { related.loading = false; });
+  }
+
   function attachSources(d, token) {
     CS.sources.enrich(d).then(function (ex) {
       if (token !== detailToken) return;
-
-      /* معرّفات ويكي داتا تحسّن الروابط الخارجية */
       if (ex.wikidata) {
         d.wd = ex.wikidata;
         if (!d.imdbId && ex.wikidata.imdb) d.imdbId = ex.wikidata.imdb;
         var linksSec = $('#dt-links');
         if (linksSec) linksSec.innerHTML = CS.ui.linksHtml(d);
       }
-
       var html = CS.ui.extraSources(d, ex);
       var slot = $('#dt-extra');
       if (slot && html) slot.innerHTML = html;
-    }).catch(function () { /* المصادر الإضافية اختيارية */ });
+    }).catch(function () { /* اختيارية */ });
   }
 
-  /* يدوّر المقالة في ويكيبيديا العربية أول، وإذا ما لقى يجرّب الإنجليزية */
   function findArticle(d) {
-    if (d.wikiTitle) {
-      return Promise.resolve({ wikiLang: d.wikiLang || 'ar', wikiTitle: d.wikiTitle, wikiUrl: d.wikiUrl });
-    }
+    if (d.wikiTitle) return Promise.resolve({ wikiLang: d.wikiLang || 'ar', wikiTitle: d.wikiTitle, wikiUrl: d.wikiUrl });
 
     var names = [d.title, d.originalTitle, d.arTitle].filter(Boolean);
     var attempts = [
@@ -452,9 +548,7 @@
         if (found) return found;
         return CS.wiki.findWorks(a.lang, a.probe, 4).then(function (works) {
           var hit = works.filter(function (w) {
-            var sim = Math.max.apply(null, names.map(function (n) {
-              return CS.search.similarity(w.cleanTitle, n);
-            }));
+            var sim = Math.max.apply(null, names.map(function (n) { return CS.search.similarity(w.cleanTitle, n); }));
             return sim > .6 && (!w.year || !d.year || Math.abs(w.year - d.year) <= 1);
           })[0];
           return hit ? { wikiLang: hit.wikiLang, wikiTitle: hit.wikiTitle, wikiUrl: hit.wikiUrl } : null;
@@ -473,12 +567,25 @@
         d.wikiLang = w.wikiLang;
         extra.fullPlot = plot;
         extra.plotLang = w.wikiLang;
+
+        /* ترجمة تلقائية للقصة الطويلة لو الإعداد مفعّل */
+        if (CS.state.lang === 'ar' && autoTranslateOn() && !CS.util.isArabic(plot)) {
+          extra.translating = true;
+          repaintStory();
+          CS.wiki.toArabic(plot, 3000).then(function (ar) {
+            if (token !== detailToken) return;
+            extra.translating = false;
+            if (ar) extra.plotArabic = ar;
+            else extra.plotError = 'ما قدرت أترجم القصة — غالبًا انتهت الحصة اليومية المجانية. حط بريدك في الإعدادات عشان يرتفع الحد.';
+            repaintStory();
+          });
+          return;
+        }
         repaintStory();
       });
-    }).catch(function () { /* القصة الكاملة اختيارية */ });
+    }).catch(function () { /* اختيارية */ });
   }
 
-  /* ترجمة القصة الطويلة عند الطلب — تستهلك حصة MyMemory اليومية */
   function translatePlot(btn) {
     if (!detailCtx || !detailCtx.extra.fullPlot) return;
     var ctx = detailCtx;
@@ -487,12 +594,8 @@
 
     CS.wiki.toArabic(ctx.extra.fullPlot, 3000).then(function (ar) {
       if (ctx.token !== detailToken) return;
-      if (ar) {
-        ctx.extra.plotArabic = ar;
-        ctx.extra.plotError = '';
-      } else {
-        ctx.extra.plotError = 'ما قدرت أترجم — غالبًا انتهت الحصة اليومية المجانية للترجمة. جرّب بكرة، أو حط بريدك في الإعدادات عشان يرتفع الحد.';
-      }
+      if (ar) { ctx.extra.plotArabic = ar; ctx.extra.plotError = ''; }
+      else ctx.extra.plotError = 'ما قدرت أترجم — غالبًا انتهت الحصة اليومية المجانية للترجمة.';
       repaintStory();
     });
   }
@@ -504,7 +607,6 @@
     panel.innerHTML = CS.ui.detailSkeleton();
     window.scrollTo(0, 0);
 
-    /* itemKey يرمّز العنوان، فلازم نبحث بنفس الصيغة وإلا نخسر البوستر والسنة */
     var cached = itemCache['w/' + lang + '/' + encodeURIComponent(title)] ||
                  itemCache['w/' + lang + '/' + title];
 
@@ -516,13 +618,8 @@
         wikiLang: lang, wikiTitle: title,
         wikiUrl: 'https://' + lang + '.wikipedia.org/wiki/' + encodeURIComponent(title)
       };
-      var extra = {
-        summary: d.overview || '',
-        summarySource: 'الملخص من ويكيبيديا',
-        fullPlot: plot,
-        plotLang: lang
-      };
-      remember([d]);   /* بدونه أزرار 👍/👎 تصير ميتة على الروابط المشاركة */
+      var extra = { summary: d.overview || '', summarySource: 'الملخص من ويكيبيديا', fullPlot: plot, plotLang: lang };
+      remember([d]);
       panel.innerHTML = CS.ui.detail(d, extra);
       window.scrollTo(0, 0);
       detailCtx = { d: d, extra: extra, token: token };
@@ -533,21 +630,60 @@
   }
 
   /* ============================================================
+     صفحة الشخص
+     ============================================================ */
+
+  var personCtx = null;
+
+  function openPerson(id) {
+    var token = ++detailToken;
+    showView('person');
+    var panel = $('#person-panel');
+    panel.innerHTML = CS.ui.detailSkeleton();
+    window.scrollTo(0, 0);
+
+    CS.tmdb.person(id).then(function (p) {
+      if (token !== detailToken) return;
+      personCtx = { p: p, shown: PAGE, token: token };
+      remember(p.works);
+      panel.innerHTML = CS.ui.person(p, personCtx.shown);
+      hydrate(panel, p.works.slice(0, personCtx.shown));
+      window.scrollTo(0, 0);
+    }).catch(function (err) {
+      if (token !== detailToken) return;
+      panel.innerHTML = '<div class="dt__body"><div class="empty"><b>🔴 ما قدرت أفتح صفحة الشخص</b><p>' +
+        esc0(CS.tmdb.explain(err)) + '</p></div></div>';
+    });
+  }
+
+  function morePersonWorks() {
+    if (!personCtx) return;
+    personCtx.shown += PAGE;
+    var panel = $('#person-panel');
+    panel.innerHTML = CS.ui.person(personCtx.p, personCtx.shown);
+    hydrate(panel, personCtx.p.works.slice(0, personCtx.shown));
+  }
+
+  /* ============================================================
      الإعدادات
      ============================================================ */
 
   function openSettings() {
-    $('#api-key').value = CS.state.userKey || '';
-    $('#omdb-key').value = CS.store.get(CS.KEYS.omdbKey, '') || '';
-    $('#tr-email').value = CS.store.get(CS.KEYS.email, '') || '';
-    $('#set-lang').value = CS.state.lang;
+    $('#api-key').value    = CS.state.userKey || '';
+    $('#omdb-key').value   = CS.store.get(CS.KEYS.omdbKey, '') || '';
+    $('#fanart-key').value = CS.store.get(CS.KEYS.fanartKey, '') || '';
+    $('#trakt-key').value  = CS.store.get(CS.KEYS.traktKey, '') || '';
+    $('#tr-email').value   = CS.store.get(CS.KEYS.email, '') || '';
+    $('#set-lang').value   = CS.state.lang;
     $('#set-region').value = CS.state.region;
+    $('#set-autotr').checked = autoTranslateOn();
+
     var st = $('#key-state');
     st.className = 'keystate';
     st.textContent = '';
     $('#settings').hidden = false;
     document.body.classList.add('is-locked');
-    setTimeout(function () { $('#api-key').focus(); }, 60);
+    setTimeout(function () { $('#set-lang').focus(); }, 60);
   }
 
   function closeSettings() {
@@ -555,28 +691,34 @@
     document.body.classList.remove('is-locked');
   }
 
+  function rerenderCurrent() {
+    var r = parseHash();
+    if (r.name === 'detail') { openDetail(r.type, r.id); return; }
+    if (r.name === 'wiki')   { openWikiDetail(r.lang, r.title); return; }
+    if (r.name === 'person') { openPerson(r.id); return; }
+    if (CS.state.view === 'results' && CS.state.query) { doSearch(CS.state.query, true); return; }
+    if (CS.state.view === 'liked') { renderLiked(); return; }
+    startFeed(currentTab());
+  }
+
   function finishSave() {
-    setTimeout(function () {
-      closeSettings();
-      CS.ui.toast('🟢 تم الحفظ');
-      rerenderCurrent();
-    }, 700);
+    setTimeout(function () { closeSettings(); CS.ui.toast('🟢 تم الحفظ'); rerenderCurrent(); }, 650);
   }
 
   function saveSettings() {
     var key = $('#api-key').value.trim();
-    var omdb = $('#omdb-key').value.trim();
-    var email = $('#tr-email').value.trim();
-    var lang = $('#set-lang').value;
-    var region = $('#set-region').value;
     var state = $('#key-state');
 
-    CS.state.lang = CS.store.set(CS.KEYS.lang, lang);
-    CS.state.region = CS.store.set(CS.KEYS.region, region);
-    $('#lang-label').textContent = lang === 'ar' ? 'ع' : 'EN';
+    CS.state.lang = CS.store.set(CS.KEYS.lang, $('#set-lang').value);
+    CS.state.region = CS.store.set(CS.KEYS.region, $('#set-region').value);
+    CS.store.set(CS.KEYS.autoTr, $('#set-autotr').checked);
+    $('#lang-label').textContent = CS.state.lang === 'ar' ? 'ع' : 'EN';
 
-    if (email) CS.store.set(CS.KEYS.email, email); else CS.store.remove(CS.KEYS.email);
-    if (omdb) CS.store.set(CS.KEYS.omdbKey, omdb); else CS.store.remove(CS.KEYS.omdbKey);
+    [['#omdb-key', CS.KEYS.omdbKey], ['#fanart-key', CS.KEYS.fanartKey],
+     ['#trakt-key', CS.KEYS.traktKey], ['#tr-email', CS.KEYS.email]].forEach(function (pair) {
+      var v = $(pair[0]).value.trim();
+      if (v) CS.store.set(pair[1], v); else CS.store.remove(pair[1]);
+    });
 
     if (!key) {
       CS.state.userKey = '';
@@ -601,20 +743,8 @@
       return CS.tmdb.loadGenres();
     }).then(finishSave).catch(function (err) {
       state.className = 'keystate is-bad';
-      state.textContent = err && err.message === 'BAD_KEY'
-        ? '🔴 المفتاح مرفوض من TMDB. تأكد إنك ناسخ مفتاح v3 أو توكن v4 كامل.'
-        : '🔴 ما قدرت أتحقق من المفتاح — تحقق من الاتصال.';
+      state.textContent = '🔴 ' + CS.tmdb.explain(err);
     });
-  }
-
-  /* يعيد بناء الشاشة الحالية أيًا كانت — بما فيها صفحة العمل */
-  function rerenderCurrent() {
-    var r = parseHash();
-    if (r.name === 'detail') { openDetail(r.type, r.id); return; }
-    if (r.name === 'wiki')   { openWikiDetail(r.lang, r.title); return; }
-    if (CS.state.view === 'results' && CS.state.query) { doSearch(CS.state.query, CS.state.mode, true); return; }
-    if (CS.state.view === 'liked') { renderLiked(); return; }
-    renderHome();
   }
 
   function refreshKeyNotice() {
@@ -622,10 +752,9 @@
     $('#key-notice').hidden = CS.hasKey() || off;
   }
 
-  /* TMDB ما يرد فعليًا؟ نقولها في الشريط العلوي مهما كان في الصفحة */
   function showTmdbProblem(reason) {
-    var bar = $('#key-notice');
     if (CS.store.get(CS.KEYS.noticeOff, false)) return;
+    var bar = $('#key-notice');
     $('#key-notice-text').textContent = CS.state.userKey
       ? '🔴 مفتاحك الخاص ما يشتغل: ' + reason
       : '🔴 المفتاح المشترك ما يشتغل: ' + reason + ' — حط مفتاحك الخاص المجاني.';
@@ -633,8 +762,6 @@
     bar.dataset.tmdbBroken = '1';
     bar.hidden = false;
   }
-
-  /* ---------- زر «تحقق من الاتصال» ---------- */
 
   function testConnection() {
     var btn = $('#btn-test-key');
@@ -650,20 +777,14 @@
     CS.tmdb.diagnose(key || null).then(function (rep) {
       btn.disabled = false;
       btn.textContent = label;
-
       var rows = rep.steps.map(function (s) {
-        return '<div class="diag__row"><span>' + (s.ok ? '🟢' : '🔴') + '</span>' +
-               '<b>' + CS.util.esc(s.name) + '</b>' +
-               '<i>' + CS.util.esc(s.detail) + '</i></div>';
+        return '<div class="diag__row"><span>' + (s.ok ? '🟢' : '🔴') + '</span><b>' +
+          esc0(s.name) + '</b><i>' + esc0(s.detail) + '</i></div>';
       }).join('');
-
       box.className = 'keystate ' + (rep.ok ? 'is-ok' : 'is-bad');
-      box.innerHTML =
-        '<div class="diag__head">' + (rep.ok
-          ? '🟢 كل شي شغّال — الموقع يقدر يبحث ويجيب البيانات'
-          : '🔴 فيه خلل — تفاصيله تحت') + '</div>' + rows +
-        (rep.ok ? '' :
-          '<div class="diag__tip">' + CS.util.esc(hintFor(rep)) + '</div>');
+      box.innerHTML = '<div class="diag__head">' +
+        (rep.ok ? '🟢 كل شي شغّال — الموقع يقدر يبحث ويجيب البيانات' : '🔴 فيه خلل — تفاصيله تحت') +
+        '</div>' + rows + (rep.ok ? '' : '<div class="diag__tip">' + esc0(hintFor(rep)) + '</div>');
     }).catch(function (e) {
       btn.disabled = false;
       btn.textContent = label;
@@ -673,43 +794,11 @@
   }
 
   function hintFor(rep) {
-    var first = rep.steps.filter(function (s) { return !s.ok; })[0] || {};
-    var d = first.detail || '';
+    var d = (rep.steps.filter(function (s) { return !s.ok; })[0] || {}).detail || '';
     if (/401|رفض/.test(d)) return 'الحل: خذ مفتاحًا مجانيًا من themoviedb.org والصقه في الخانة فوق ثم احفظ.';
     if (/429|حد الطلبات/.test(d)) return 'الحل: انتظر دقيقة وأعد الفحص، أو استخدم مفتاحك الخاص.';
-    if (/ما وصلت/.test(d)) return 'الحل: جرّب شبكة ثانية أو بيانات الجوال — بعض الشبكات في المنطقة تحجب api.themoviedb.org. البحث بوصف القصة عبر ويكيبيديا يضل شغّالًا.';
+    if (/ما وصلت/.test(d)) return 'الحل: جرّب شبكة ثانية أو بيانات الجوال — بعض الشبكات تحجب api.themoviedb.org.';
     return 'جرّب مرة ثانية بعد شوي، وإذا تكرر أرسل لي نص الخطأ.';
-  }
-
-  /* ============================================================
-     فلتر التصنيف العمري
-     ============================================================ */
-
-  function setCertFilter(value) {
-    var f = CS.certs.FILTERS[value] || CS.certs.FILTERS.all;
-
-    /* أوضاع الكبار تحتاج موافقة صريحة مرة وحدة */
-    if (f.needsAdult && !CS.store.get(CS.KEYS.adultOn, false)) {
-      var ok = window.confirm(
-        'وضع «للكبار فقط»\n\n' +
-        'هذا الخيار يعرض محتوى ١٨+ فقط — ما يعرض شي عام. ' +
-        'ويفعّل include_adult عند TMDB.\n\n' +
-        'تأكد إنك بالغ وإن استخدامه مسؤوليتك. تبي تشغّله؟'
-      );
-      if (!ok) {
-        $$('.cert-filter').forEach(function (s) { s.value = CS.certs.currentFilter(); });
-        return;
-      }
-      CS.store.set(CS.KEYS.adultOn, true);
-    }
-    if (!f.needsAdult) CS.store.set(CS.KEYS.adultOn, false);
-
-    CS.store.set(CS.KEYS.certTier, value);
-    CS.state.shown = LIM.pageSize;
-
-    if (CS.state.view === 'results' && CS.state.query) doSearch(CS.state.query, CS.state.mode, true);
-    else if (CS.state.view === 'home') renderHome();
-    else if (CS.state.view === 'liked') renderLiked();
   }
 
   /* ============================================================
@@ -733,16 +822,15 @@
     CS.search.suggest(q).then(function (list) {
       if (token !== suggestToken || !list.length) return hideSuggest();
       remember(list);
-      var s = $('#suggest');
-      s.innerHTML = list.map(function (it) {
+      $('#suggest').innerHTML = list.map(function (it) {
         var img = it.poster
-          ? '<img src="' + CS.util.esc(it.poster) + '" alt="" loading="lazy">'
+          ? '<img src="' + esc0(it.poster) + '" alt="" loading="lazy">'
           : '<span class="sug__ph">' + (it.type === 'tv' ? '📺' : '🎬') + '</span>';
-        return '<button type="button" class="sug" data-open="' + CS.util.esc(CS.ui.itemKey(it)) + '">' + img +
-          '<span class="sug__t"><b>' + CS.util.esc(it.title) + '</b>' +
-          '<span>' + [it.year, CS.ui.TYPE_AR[it.type]].filter(Boolean).join(' · ') + '</span></span></button>';
+        return '<button type="button" class="sug" data-open="' + esc0(CS.ui.itemKey(it)) + '">' + img +
+          '<span class="sug__t"><b>' + esc0(it.title) + '</b><span>' +
+          [it.year, CS.ui.TYPE_AR[it.type]].filter(Boolean).join(' · ') + '</span></span></button>';
       }).join('');
-      s.hidden = false;
+      $('#suggest').hidden = false;
     }).catch(hideSuggest);
   }, 320);
 
@@ -751,25 +839,23 @@
      ============================================================ */
 
   var suppressRoute = false;
+  var ourSteps = 0;
 
-  function decodeSafe(s) {
-    try { return decodeURIComponent(s); } catch (e) { return s; }
-  }
+  function decodeSafe(s) { try { return decodeURIComponent(s); } catch (e) { return s; } }
 
   function parseHash() {
     var raw = location.hash.slice(1);
     if (!raw) return { name: 'home' };
-    /* مرساة داخل الصفحة (#main) مو مسار — ما نغيّر الشاشة لها */
     if (raw.charAt(0) !== '/') return { name: 'ignore' };
 
     var h = raw.replace(/^\//, '');
     if (!h) return { name: 'home' };
     var parts = h.split('/');
 
-    if (parts[0] === 's' && parts.length >= 3) {
-      return { name: 'search', mode: parts[1], query: decodeSafe(parts.slice(2).join('/')) };
+    if (parts[0] === 's' && parts.length >= 2) {
+      return { name: 'search', query: decodeSafe(parts.slice(1).join('/')) };
     }
-    /* #/work/movie/550 · #/work/w/ar/العنوان */
+    if (parts[0] === 'person' && parts[1]) return { name: 'person', id: parts[1] };
     if (parts[0] === 'work') parts = parts.slice(1);
 
     if ((parts[0] === 'movie' || parts[0] === 'tv') && parts[1]) {
@@ -787,31 +873,27 @@
     var r = parseHash();
     if (r.name === 'ignore') return;
 
-    if (r.name !== 'detail' && r.name !== 'wiki') detailToken++;
+    if (r.name !== 'detail' && r.name !== 'wiki' && r.name !== 'person') detailToken++;
 
     if (r.name === 'detail') { CS.state.backTo = CS.state.backTo || '#/'; openDetail(r.type, r.id); return; }
     if (r.name === 'wiki')   { CS.state.backTo = CS.state.backTo || '#/'; openWikiDetail(r.lang, r.title); return; }
+    if (r.name === 'person') { CS.state.backTo = CS.state.backTo || '#/'; openPerson(r.id); return; }
 
     CS.state.backTo = location.hash || '#/';
 
-    if (r.name === 'search') { doSearch(r.query, r.mode, true); return; }
+    if (r.name === 'search') { doSearch(r.query, true); return; }
     if (r.name === 'liked')  { renderLiked(); return; }
-    renderHome();
+
+    showView('home');
+    if (!CS.feed.current().items.length) startFeed(currentTab());
   }
 
-  function goDetail(key) {
-    suggestOff = true;
-    hideSuggest();
+  function goTo(hash) {
     var here = parseHash().name;
-    if (here !== 'detail' && here !== 'wiki') CS.state.backTo = location.hash || '#/';
-    var next = '#/work/' + key;
-    if (location.hash !== next) ourSteps++;
-    location.hash = next;
+    if (here !== 'detail' && here !== 'wiki' && here !== 'person') CS.state.backTo = location.hash || '#/';
+    if (location.hash !== hash) ourSteps++;
+    location.hash = hash;
   }
-
-  /* نعدّ خطواتنا نحن فقط — history.length يعدّ التبويب كله،
-     فزائر جاء من رابط مشارَك كان زر الرجوع يطلّعه برّا الموقع */
-  var ourSteps = 0;
 
   function goBack() {
     if (ourSteps > 0) { ourSteps--; history.back(); return; }
@@ -819,32 +901,16 @@
   }
 
   /* ============================================================
-     أوضاع البحث
-     ============================================================ */
-
-  function setModeChip(mode) {
-    $$('.chip[data-mode]').forEach(function (c) {
-      var on = c.dataset.mode === mode;
-      c.classList.toggle('is-active', on);
-      c.setAttribute('aria-checked', on ? 'true' : 'false');
-    });
-  }
-
-  /* ============================================================
-     التصويت (عجبني / ما عجبني)
+     التصويت
      ============================================================ */
 
   function handleVote(btn) {
     var item = itemCache[btn.dataset.item];
     if (!item) return;
-    var dir = +btn.dataset.vote;
-    var now = CS.taste.set(item, dir);
+    var now = CS.taste.set(item, +btn.dataset.vote);
 
-    CS.ui.toast(now === 1 ? '👍 انضاف لذوقك — بتشوف شبيهه في الاستكشاف'
-              : now === -1 ? '👎 تمام، ما بكرّر لك شبيهه'
-              : '⚪ شلت رأيك');
+    CS.ui.toast(now === 1 ? '👍 انضاف لذوقك' : now === -1 ? '👎 تمام، ما بكرّر لك شبيهه' : '⚪ شلت رأيك');
 
-    /* نحدّث كل أزرار نفس العمل في الصفحة */
     $$('[data-item="' + attrEsc(btn.dataset.item) + '"]').forEach(function (b) {
       var on = +b.dataset.vote === now;
       b.classList.toggle('is-on', on);
@@ -852,8 +918,35 @@
     });
 
     updateLikeCount();
-    paintTasteState();
     if (CS.state.view === 'liked') renderLiked();
+  }
+
+  /* ============================================================
+     التمرير اللانهائي
+     ============================================================ */
+
+  function watchSentinels() {
+    if (!('IntersectionObserver' in window)) return;
+
+    new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        if (e.target.id === 'feed-sentinel' && CS.state.view === 'home' && !$('#feed-more').hidden) loadFeed(false);
+        if (e.target.id === 'results-sentinel' && CS.state.view === 'results' && !$('#loadmore-wrap').hidden) {
+          CS.state.shown += PAGE;
+          paintResults();
+        }
+      });
+    }, { rootMargin: '600px' }).observe($('#feed-sentinel')),
+
+    new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting && CS.state.view === 'results' && !$('#loadmore-wrap').hidden) {
+          CS.state.shown += PAGE;
+          paintResults();
+        }
+      });
+    }, { rootMargin: '600px' }).observe($('#results-sentinel'));
   }
 
   /* ============================================================
@@ -865,12 +958,13 @@
     $('#search-form').addEventListener('submit', function (e) {
       e.preventDefault();
       var q = $('#q').value.trim();
-      if (q) doSearch(q, CS.state.mode);
+      if (q) goTo('#/s/' + encodeURIComponent(q));
     });
 
     $('#q').addEventListener('input', function () {
       var v = this.value.trim();
       $('#search-clear').hidden = !v;
+      $('#btn-to-en').hidden = !CS.util.isArabic(v);
       suggestOff = false;
       runSuggest(v);
     });
@@ -883,65 +977,44 @@
     $('#search-clear').addEventListener('click', function () {
       $('#q').value = '';
       this.hidden = true;
+      $('#btn-to-en').hidden = true;
       hideSuggest();
       $('#q').focus();
     });
 
-    $$('.chip[data-mode]').forEach(function (chip) {
-      chip.addEventListener('click', function () {
-        CS.state.mode = chip.dataset.mode;
-        CS.store.set(CS.KEYS.mode, CS.state.mode);
-        setModeChip(CS.state.mode);
-        var q = $('#q').value.trim();
-        if (q) doSearch(q, CS.state.mode);
-      });
+    $('#btn-to-en').addEventListener('click', searchInEnglish);
+
+    /* --- التبويبات وأدوات الخلاصة --- */
+    $('#tabs').addEventListener('click', function (e) {
+      var t = e.target.closest('.tab');
+      if (!t) return;
+      setTab(t.dataset.tab);
+      startFeed(t.dataset.tab);
     });
 
-    $('#hero-examples').addEventListener('click', function (e) {
-      var b = e.target.closest('[data-example]');
-      if (!b) return;
-      doSearch(b.dataset.example, 'plot');
+    ['#feed-sort', '#feed-lang', '#feed-rating'].forEach(function (sel) {
+      $(sel).addEventListener('change', function () { startFeed(currentTab()); });
     });
 
-    /* --- الفلاتر --- */
-    $('#filters').addEventListener('click', function (e) {
-      var b = e.target.closest('[data-filter-type]');
-      if (!b) return;
-      $$('[data-filter-type]').forEach(function (x) { x.classList.toggle('is-active', x === b); });
-      CS.state.shown = LIM.pageSize;
-      paintResults();
-    });
-
-    ['#sort-by', '#min-rating', '#year-from', '#year-to'].forEach(function (sel) {
-      $(sel).addEventListener('change', function () {
-        CS.state.shown = LIM.pageSize;
-        paintResults();
-      });
-    });
-
-    $$('.cert-filter').forEach(function (sel) {
-      sel.addEventListener('change', function () {
-        $$('.cert-filter').forEach(function (o) { o.value = sel.value; });
-        setCertFilter(sel.value);
-      });
-    });
-
-    $('#btn-reset-filters').addEventListener('click', function () {
-      $$('[data-filter-type]').forEach(function (x) { x.classList.toggle('is-active', x.dataset.filterType === 'all'); });
-      $('#sort-by').value = 'relevance';
-      $('#min-rating').value = '0';
-      $('#year-from').value = '';
-      $('#year-to').value = '';
-      CS.store.set(CS.KEYS.certTier, 'all');
-      CS.store.set(CS.KEYS.adultOn, false);
-      $$('.cert-filter').forEach(function (s) { s.value = 'all'; });
-      CS.state.shown = LIM.pageSize;
-      paintResults();
-    });
-
+    $('#btn-feed-more').addEventListener('click', function () { loadFeed(false); });
     $('#btn-loadmore').addEventListener('click', function () {
-      CS.state.shown += LIM.pageSize;
+      CS.state.shown += PAGE;
       paintResults();
+    });
+
+    /* --- المفضلة --- */
+    $('#btn-export').addEventListener('click', exportTaste);
+    $('#btn-import').addEventListener('click', function () { $('#import-file').click(); });
+    $('#import-file').addEventListener('change', function () {
+      importTaste(this.files && this.files[0]);
+      this.value = '';
+    });
+    $('#btn-reset-taste').addEventListener('click', function () {
+      if (!window.confirm('أصفّر كل الإعجابات وأرجع من الصفر؟')) return;
+      CS.taste.clearAll();
+      updateLikeCount();
+      renderLiked();
+      CS.ui.toast('⚪ انصفّر ذوقك');
     });
 
     /* --- تفويض النقر العام --- */
@@ -949,58 +1022,51 @@
       var vote = e.target.closest('[data-vote]');
       if (vote) { e.preventDefault(); handleVote(vote); return; }
 
+      var person = e.target.closest('[data-person]');
+      if (person) {
+        if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+        e.preventDefault();
+        goTo('#/person/' + person.dataset.person);
+        return;
+      }
+
       var open = e.target.closest('[data-open]');
       if (open) {
-        /* نترك الضغط المعدّل للمتصفح عشان «افتح في تبويب جديد» يشتغل */
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
         e.preventDefault();
-        goDetail(open.dataset.open);
+        suggestOff = true;
+        hideSuggest();
+        goTo('#/work/' + open.dataset.open);
         return;
       }
 
       var trBtn = e.target.closest('[data-translate-plot]');
       if (trBtn) { translatePlot(trBtn); return; }
 
+      if (e.target.closest('[data-related-more]') && detailCtx) { loadRelated(detailCtx.d, detailCtx.token, false); return; }
+      if (e.target.closest('[data-person-more]')) { morePersonWorks(); return; }
+
       var share = e.target.closest('[data-share]');
-      if (share) {
-        var url = location.origin + location.pathname + '#/work/' + share.dataset.share;
-        copyLink(url);
-        return;
-      }
+      if (share) { copyLink(location.origin + location.pathname + '#/work/' + share.dataset.share); return; }
 
       if (e.target.closest('[data-fatal-dismiss]')) { clearFatal(); return; }
       if (e.target.closest('[data-diagnose]')) { openSettings(); testConnection(); return; }
-      if (e.target.closest('[data-retry-home]')) { renderHome(); return; }
-      if (e.target.closest('[data-cert-all]')) {
-        $$('.cert-filter').forEach(function (s) { s.value = 'all'; });
-        setCertFilter('all');
-        return;
-      }
+      if (e.target.closest('[data-retry-home]')) { startFeed(currentTab()); return; }
+      if (e.target.closest('[data-tab-all]')) { setTab('all'); startFeed('all'); return; }
       if (e.target.closest('[data-back]')) { goBack(); return; }
       if (e.target.closest('[data-close-settings]')) { closeSettings(); return; }
       if (e.target.closest('[data-route-home]')) { e.preventDefault(); location.hash = '#/'; return; }
-
-      if (e.target.id === 'btn-reset-taste') {
-        if (window.confirm('أصفّر كل الإعجابات وأرجع الاستكشاف من الصفر؟')) {
-          CS.taste.clearAll();
-          updateLikeCount();
-          renderHome();
-          CS.ui.toast('⚪ انصفّر ذوقك');
-        }
-        return;
-      }
 
       if (!e.target.closest('#search-form')) hideSuggest();
     });
 
     /* --- أزرار الهيدر --- */
-    $('#btn-fav').addEventListener('click', function () { location.hash = '#/liked'; });
+    $('#btn-fav').addEventListener('click', function () { goTo('#/liked'); });
     $('#btn-settings').addEventListener('click', openSettings);
     $('#notice-open-settings').addEventListener('click', function () {
       openSettings();
       if ($('#key-notice').dataset.tmdbBroken) testConnection();
     });
-
     $('#notice-dismiss').addEventListener('click', function () {
       CS.store.set(CS.KEYS.noticeOff, true);
       $('#key-notice').hidden = true;
@@ -1031,29 +1097,20 @@
 
     /* --- الاختصارات --- */
     document.addEventListener('keydown', function (e) {
-      /* النافذة معلنة aria-modal، فلازم التركيز يضل داخلها فعلًا */
       if (e.key === 'Tab' && !$('#settings').hidden) {
-        var focusables = $$(
-          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-          $('.modal__panel')
-        ).filter(function (el) { return el.offsetParent !== null; });
-        if (!focusables.length) return;
-
-        var first = focusables[0];
-        var last = focusables[focusables.length - 1];
-        var here = document.activeElement;
-
-        if (e.shiftKey && (here === first || !$('.modal__panel').contains(here))) {
-          e.preventDefault(); last.focus();
-        } else if (!e.shiftKey && (here === last || !$('.modal__panel').contains(here))) {
-          e.preventDefault(); first.focus();
-        }
+        var panel = $('.modal__panel');
+        var f = $$('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled])', panel)
+          .filter(function (el) { return el.offsetParent !== null; });
+        if (!f.length) return;
+        var first = f[0], last = f[f.length - 1], here = document.activeElement;
+        if (e.shiftKey && (here === first || !panel.contains(here))) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && (here === last || !panel.contains(here))) { e.preventDefault(); first.focus(); }
         return;
       }
 
       if (e.key === 'Escape') {
         if (!$('#settings').hidden) return closeSettings();
-        if (CS.state.view === 'detail') return goBack();
+        if (CS.state.view === 'detail' || CS.state.view === 'person') return goBack();
         hideSuggest();
         return;
       }
@@ -1065,27 +1122,10 @@
   }
 
   /* ============================================================
-     الإقلاع
+     حزام الأمان
      ============================================================ */
 
-  /* ------------------------------------------------------------
-     حزام أمان: أي خطأ ما يخلي الصفحة ميتة
-     ------------------------------------------------------------ */
-
-  /* لو نسخة HTML المخزّنة في المتصفح ما تطابق ملفات JS، الصفحة كانت تموت
-     قبل ما تُربط الأزرار. الحين نكشفها ونطلب تحديثًا قسريًا. */
-  var REQUIRED = ['util', 'store', 'state', 'taste', 'certs', 'tmdb', 'wiki', 'sources', 'links', 'search', 'ui'];
-
-  function missingModules() {
-    return REQUIRED.filter(function (m) { return !CS[m]; });
-  }
-
-  /* هروب محلي — ما نعتمد على CS.util لأن util نفسه قد يكون هو الناقص */
-  function esc0(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
+  var REQUIRED = ['util', 'store', 'state', 'taste', 'certs', 'tmdb', 'wiki', 'sources', 'links', 'feed', 'search', 'ui'];
 
   function fatal(title, detail, showReload) {
     var bar = document.getElementById('fatal');
@@ -1095,18 +1135,14 @@
       bar.className = 'fatal';
       document.body.insertBefore(bar, document.body.firstChild);
     }
-    bar.innerHTML =
-      '<b>🔴 ' + esc0(title) + '</b>' +
-      '<span>' + esc0(detail) + '</span>' +
+    bar.innerHTML = '<b>🔴 ' + esc0(title) + '</b><span>' + esc0(detail) + '</span>' +
       (showReload ? '<button class="notice__cta" id="fatal-reload">حدّث الصفحة الآن</button>' : '') +
       '<button class="notice__x" data-fatal-dismiss aria-label="إخفاء">&times;</button>';
     bar.hidden = false;
-
     var rl = document.getElementById('fatal-reload');
     if (rl) rl.addEventListener('click', hardReload);
   }
 
-  /* تحديث قسري: يتجاوز كاش المتصفح بإضافة بصمة وقت للعنوان */
   function hardReload() {
     var url = location.href.split('#')[0].split('?')[0];
     location.replace(url + '?fresh=' + Date.now() + location.hash);
@@ -1117,50 +1153,49 @@
     if (bar) bar.hidden = true;
   }
 
+  function step(fn) {
+    try { fn(); } catch (e) { if (window.console) console.error('[ranhub] خطوة إقلاع فشلت:', e); }
+  }
+
   function boot() {
-    /* ١) نتأكد إن كل الوحدات موجودة قبل أي شي */
-    var missing = missingModules();
+    var missing = REQUIRED.filter(function (m) { return !CS[m]; });
     if (missing.length) {
       fatal('نسخة الصفحة قديمة',
-            'متصفحك مخزّن نسخة قديمة من الموقع (' + missing.join('، ') + ' ناقصة). اضغط تحديث.',
-            true);
-      return;   /* ما نكمل — الصفحة ناقصة فعلًا */
-    }
-
-    /* ٢) الأزرار أول شي، عشان الصفحة تفضل تتفاعل مهما صار بعدها */
-    try {
-      bind();
-    } catch (e) {
-      fatal('ما قدرت أربط الأزرار', String(e && e.message || e), true);
+            'متصفحك مخزّن نسخة قديمة من الموقع (' + missing.join('، ') + ' ناقصة). اضغط تحديث.', true);
       return;
     }
 
-    /* ٣) بقية التهيئة — كل خطوة لحالها عشان وحدة ما تسقّط الباقي */
+    try { bind(); }
+    catch (e) { fatal('ما قدرت أربط الأزرار', String(e && e.message || e), true); return; }
+
     step(function () { $('#lang-label').textContent = CS.state.lang === 'ar' ? 'ع' : 'EN'; });
-    step(function () { setModeChip(CS.state.mode); });
     step(function () {
       var moved = CS.taste.migrate();
       if (moved) setTimeout(function () { CS.ui.toast('👍 نقلت ' + moved + ' من مفضلتك القديمة'); }, 900);
     });
     step(updateLikeCount);
     step(refreshKeyNotice);
-    step(function () { $$('.cert-filter').forEach(function (s) { s.value = CS.certs.currentFilter(); }); });
+    step(watchSentinels);
+    step(function () {
+      /* نرجع لآخر قسم كان فيه، والفلتر يتبع القسم لا العكس */
+      var tab = CS.store.get(CS.KEYS.tab, 'all');
+      if (!TABS[tab]) tab = 'all';
+      if (TABS[tab].cert !== 'all' && !CS.store.get(CS.KEYS.adultOn, false)) tab = 'all';
+      setTab(tab);
+      CS.store.set(CS.KEYS.certTier, TABS[tab].cert);
+      $('#feed-title').textContent = TABS[tab].title;
+      $('#age-warn').hidden = TABS[tab].cert === 'all';
+    });
 
     var start = CS.hasKey() ? CS.tmdb.loadGenres().catch(function () {}) : Promise.resolve();
+    /* onRoute تكفي: مسار الرئيسية يشغّل الخلاصة بنفسه.
+       نداء ثانٍ هنا كان يصفّر الخلاصة وسط تحميلها فتطلع الشاشة فاضية. */
     start.then(function () {
       try { onRoute(); }
       catch (e) { fatal('ما قدرت أفتح الصفحة', String(e && e.message || e), true); }
     });
   }
 
-  function step(fn) {
-    try { fn(); } catch (e) {
-      if (window.console) console.error('[cinesearch] خطوة إقلاع فشلت:', e);
-    }
-  }
-
-  /* أي خطأ غير متوقع يظهر للمستخدم بدل ما تصير الصفحة ميتة بصمت.
-     نبلّغ مرة وحدة فقط، وداخل try، عشان ما ندخل في عاصفة أخطاء متكررة. */
   var reported = false;
   window.addEventListener('error', function (e) {
     if (reported || !e || !e.message) return;
@@ -1168,11 +1203,8 @@
     try { fatal('صار خطأ في الصفحة', e.message, true); } catch (ignored) { /* آخر خط دفاع */ }
   });
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
-  } else {
-    boot();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
 
   CS.app = { fatal: fatal, clearFatal: clearFatal, hardReload: hardReload };
 

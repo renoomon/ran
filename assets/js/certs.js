@@ -213,12 +213,11 @@
    * needsAdult: يحتاج موافقة صريحة قبل التفعيل.
    */
   var FILTERS = {
-    all:    { label: 'كل التصنيفات', min: 0, max: 4 },
-    family: { label: 'عائلي فقط',    min: 0, max: 1 },
-    teen:   { label: '+13 وأقل',     min: 0, max: 2 },
-    m17:    { label: '+17 فقط',      min: 3, max: 3, mature: true },
-    m18:    { label: '+18 (NC-17 وما يعادله)', min: 4, max: 4, mature: true },
-    adult:  { label: 'إباحي صريح فقط', min: 5, max: 5, mature: true, needsAdult: true }
+    all:      { label: 'كل التصنيفات', min: 0, max: 4 },
+    /* ثلاثة أقسام للكبار فقط — كلها تستبعد أي عمل غير مصنّف صراحةً */
+    mature:   { label: '+18 (تصنيف رسمي)', min: 4, max: 4, mature: true, needsAdult: true },
+    erotic:   { label: 'إيروتيك', min: 3, max: 4, mature: true, needsAdult: true, keywords: true },
+    explicit: { label: 'إباحي صريح', min: 5, max: 5, mature: true, needsAdult: true }
   };
 
   function currentFilter() {
@@ -228,10 +227,10 @@
 
   function current() { return FILTERS[currentFilter()]; }
 
-  /* المحتوى الإباحي يظهر فقط مع فلتر يطلبه + موافقة محفوظة */
+  /* كل أقسام الكبار الثلاثة تفتح include_adult — بموافقة محفوظة.
+     ربطها بالمستوى ٥ وحده كان يقفل الإيروتيك و+18 بلا سبب. */
   function adultAllowed() {
-    var f = current();
-    return !!(f.needsAdult && f.max === 5 && CS.store.get(CS.KEYS.adultOn, false) === true);
+    return !!(current().needsAdult && CS.store.get(CS.KEYS.adultOn, false) === true);
   }
 
   /* هل الفلتر الحالي «للكبار فقط»؟ يعني ما نعرض إلا المستويات المطلوبة */
@@ -247,7 +246,8 @@
     var info = cachedFor(item);
 
     /* الإباحي: يظهر فقط لو الفلتر يطلب المستوى ٥ والموافقة محفوظة */
-    if (item && item.adult) return f.max === 5 && adultAllowed();
+    /* العمل المعلَّم adult يظهر في أي قسم كبار مفتوح، لا في المستوى ٥ وحده */
+    if (item && item.adult) return !!f.needsAdult && adultAllowed();
 
     if (key === 'all') return true;
     if (info === undefined) return null;          /* التصنيف لسه ما وصل */
@@ -264,10 +264,11 @@
      ولا نضع تصنيفًا لوضع «الإباحي»: علم adult محور منفصل تمامًا عن NC-17،
      ولو فلترنا بـ NC-17 هناك رجعت أفلام عادية يرفضها passes() فتطلع النتيجة صفرًا. */
   var DISCOVER_CERT = {
-    family: { 'certification.gte': 'G', 'certification.lte': 'PG' },
-    teen:   { 'certification.gte': 'G', 'certification.lte': 'PG-13' },
-    m17:    { certification: 'R' },
-    m18:    { 'certification.gte': 'NC-17' }
+    /* +18 الرسمي: NC-17 فما فوق حسب لوح أمريكا */
+    mature:   { 'certification.gte': 'NC-17' },
+    /* الإيروتيك غالبًا R أو NC-17، والاعتماد الأكبر على الكلمات المفتاحية */
+    erotic:   { 'certification.gte': 'R' }
+    /* الإباحي الصريح: ما نضع تصنيفًا — علم adult محور منفصل تمامًا عن NC-17 */
   };
 
   function discoverCert(type) {
@@ -279,8 +280,140 @@
     return out;
   }
 
+  /* ------------------------------------------------------------
+     وسوم المحتوى الحسّي — من بيانات TMDB الحقيقية فقط.
+     مصدران: واصفات مجالس التصنيف الرسمية، وكلمات TMDB المفتاحية.
+     ما نخترع نسبة ولا مدة مشاهد: ما فيه أي مصدر مجاني يعطيها.
+     ------------------------------------------------------------ */
+
+  /* واصفات رسمية موجودة فعلًا في release_dates وموزّعة على الدول،
+     فنجمعها من كلها — أمريكا غالبًا فاضية وكندا والبرازيل أغنى */
+  var DESC_AR = [
+    [/sexual content|sexual/i, 'محتوى جنسي'],
+    [/\bsex\b/i, 'مشاهد جنسية'],
+    [/nudity|nude/i, 'مشاهد تعرٍّ'],
+    [/extreme violence/i, 'عنف شديد'],
+    [/violence|gore/i, 'عنف'],
+    [/substance abuse|drug/i, 'مخدرات'],
+    [/coarse language|inappropriate language|profanity/i, 'ألفاظ نابية'],
+    [/fear|horror|disturbing/i, 'مشاهد مرعبة']
+  ];
+
+  function descriptorsOf(json, type) {
+    var out = [];
+    ((json || {}).results || []).forEach(function (block) {
+      var list = type === 'movie'
+        ? (block.release_dates || []).reduce(function (a, d) { return a.concat(d.descriptors || []); }, [])
+        : (block.descriptors || []);
+      list.forEach(function (raw) {
+        DESC_AR.forEach(function (pair) {
+          if (pair[0].test(String(raw)) && out.indexOf(pair[1]) === -1) out.push(pair[1]);
+        });
+      });
+    });
+    return out;
+  }
+
+  /* كلمات TMDB المفتاحية — الأرقام مؤكَّدة من استجابات حقيقية */
+  var HEAT = [
+    { re: /^(pornography|porn|hardcore|porn star|porn actress|adult filmmaking)$/i, w: 100, ar: 'إباحي صريح' },
+    { re: /(softcore|erotic|erotica|sexploitation)/i,      w: 78, ar: 'إيروتيك' },
+    { re: /(full frontal nudity|frontal nudity)/i,         w: 74, ar: 'تعرٍّ كامل' },
+    { re: /(sex scene|explicit sex|graphic sex|unsimulated sex)/i, w: 68, ar: 'مشاهد جنسية' },
+    { re: /^(female nudity|male nudity|nudity|topless)$/i,  w: 62, ar: 'مشاهد تعرٍّ' },
+    { re: /^(sex|sexuality|sexual)$/i,                      w: 46, ar: 'محتوى جنسي' },
+    { re: /(bdsm|fetish|voyeurism|orgy|threesome)/i,        w: 55, ar: 'فتِش' },
+    { re: /(strip club|stripper|prostitution|prostitute|brothel)/i, w: 40, ar: 'بغاء/تعرٍّ' }
+  ];
+
+  /**
+   * يرجّع { score: 0..100, tags: [...] }
+   * score = أقوى وسم موجود فعلًا، مو تقديرًا لمدة المشاهد.
+   */
+  function heatOf(keywords, adult, descriptors) {
+    var tags = [], score = 0;
+
+    /* الواصفات الرسمية أقوى دليل — تجي من مجالس التصنيف نفسها */
+    (descriptors || []).forEach(function (d) {
+      if (tags.indexOf(d) === -1) tags.push(d);
+      if (/تعرٍّ/.test(d)) score = Math.max(score, 70);
+      else if (/مشاهد جنسية/.test(d)) score = Math.max(score, 66);
+      else if (/محتوى جنسي/.test(d)) score = Math.max(score, 48);
+    });
+
+    (keywords || []).forEach(function (k) {
+      var name = (k && k.name) || '';
+      HEAT.forEach(function (h) {
+        if (!h.re.test(name)) return;
+        if (tags.indexOf(h.ar) === -1) tags.push(h.ar);
+        score = Math.max(score, h.w);
+      });
+    });
+
+    if (adult) { score = 100; if (tags.indexOf('إباحي صريح') === -1) tags.unshift('إباحي صريح'); }
+    return { score: score, tags: tags.slice(0, 6) };
+  }
+
+  /* ---------- وسوم المحتوى للبطاقات (طلب خفيف مع تخزين) ---------- */
+
+  var HEAT_KEY = 'cs.heat_cache';
+  var heatCache = (function () {
+    var c = CS.store.get(HEAT_KEY, {});
+    return (c && typeof c === 'object' && !Array.isArray(c)) ? c : {};
+  })();
+  var heatPending = {};
+  var heatTimer;
+
+  function heatPersist() {
+    clearTimeout(heatTimer);
+    heatTimer = setTimeout(function () {
+      var keys = Object.keys(heatCache);
+      if (keys.length > MAX_CACHE) {
+        keys.slice(0, keys.length - MAX_CACHE).forEach(function (k) { delete heatCache[k]; });
+      }
+      CS.store.set(HEAT_KEY, heatCache);
+    }, 900);
+  }
+
+  function heatKeyOf(item) { return item.type + ':' + item.id; }
+
+  function cachedHeat(item) {
+    if (!item) return undefined;
+    if (item.heat) return item.heat;
+    return heatCache[heatKeyOf(item)];
+  }
+
+  function putHeat(item, heat) {
+    heatCache[heatKeyOf(item)] = heat;
+    heatPersist();
+  }
+
+  function fetchHeat(item) {
+    if (!item || item.source !== 'tmdb') return Promise.resolve(null);
+    var k = heatKeyOf(item);
+    if (heatCache[k] !== undefined) return Promise.resolve(heatCache[k]);
+    if (heatPending[k]) return heatPending[k];
+
+    heatPending[k] = CS.tmdb.req('/' + item.type + '/' + item.id + '/keywords', { language: undefined })
+      .then(function (json) {
+        var kws = (json.keywords || json.results || []);
+        var h = heatOf(kws, item.adult);
+        heatCache[k] = h;
+        delete heatPending[k];
+        heatPersist();
+        return h;
+      })
+      .catch(function () { heatCache[k] = null; delete heatPending[k]; return null; });
+
+    return heatPending[k];
+  }
+
   CS.certs = {
     TIERS: TIERS,
+    heatOf: heatOf,
+    fetchHeat: fetchHeat,
+    cachedHeat: cachedHeat,
+    putHeat: putHeat,
     discoverCert: discoverCert,
     matureOnly: matureOnly,
     current: current,
@@ -288,6 +421,7 @@
     tierFromCert: tierFromCert,
     tierInfo: tierInfo,
     fromDetails: fromDetails,
+    descriptorsOf: descriptorsOf,
     fetchFor: fetchFor,
     cachedFor: cachedFor,
     put: put,

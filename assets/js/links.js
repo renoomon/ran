@@ -115,6 +115,17 @@
     add('Wikidata',
       'https://www.wikidata.org/w/index.php?search=' + enc(name), '#339966');
 
+    /* ---------- مشاهدة وبحث ---------- */
+
+    /* ستريميو: التطبيق يلتقط stremio:// والويب بديل مضمون */
+    add('Stremio',
+      'https://web.stremio.com/#/search?search=' + enc(name), '#7b5bf5');
+
+    /* Yandex: الصيغة اللي طلبها — الاسم + السنة + online */
+    add('Yandex',
+      'https://yandex.com/search/?text=' + enc(name + ' ' + (it.year || '') + ' online'),
+      '#fc3f1d');
+
     /* ---------- فيديو وبحث عام ---------- */
 
     add('تريلر YouTube',

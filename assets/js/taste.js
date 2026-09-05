@@ -180,8 +180,36 @@
     return added;
   }
 
+  /* دمج ملف تصدير — يضيف الجديد ولا يمسح شي موجود */
+  function merge(data) {
+    if (!data || typeof data !== 'object') throw new Error('BAD_FILE');
+    var inLikes = Array.isArray(data.likes) ? data.likes : [];
+    var inDis = Array.isArray(data.dislikes) ? data.dislikes : [];
+    if (!inLikes.length && !inDis.length) return 0;
+
+    var t = load();
+    var have = {};
+    t.likes.concat(t.dislikes).forEach(function (x) { have[key(x)] = true; });
+
+    var added = 0;
+    function take(list, target) {
+      list.forEach(function (x) {
+        if (!x || !x.type || x.id == null || have[key(x)]) return;
+        have[key(x)] = true;
+        target.push(slim(x));
+        added++;
+      });
+    }
+    take(inLikes, t.likes);
+    take(inDis, t.dislikes);
+
+    if (added) save(t);
+    return added;
+  }
+
   CS.taste = {
     verdict: verdict,
+    merge: merge,
     set: set,
     enrich: enrich,
     likes: likes,

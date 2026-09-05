@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
-<meta name="theme-color" content="#0b0d12">
-<title>سينيسيرش — ابحث بالوصف، لا بالاسم</title>
-<meta name="description" content="محرك بحث للأفلام والمسلسلات: اكتب وصف القصة اللي تذكرها ويطلع لك العمل بالبوستر والقصة الكاملة، مع أعمال مشابهة وروابط IMDb وTMDB وJustWatch وغيرها.">
+<meta name="theme-color" content="#08090d">
+<title>RANHUB — أفلام ومسلسلات وبرامج</title>
+<meta name="description" content="RANHUB: ابحث بوصف القصة أو بالاسم، وشوف البوستر والقصة الكاملة بالعربي، مع التصنيف العمري الحقيقي وروابط IMDb وStremio وYandex وغيرها.">
 
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%230b0d12'/%3E%3Ccircle cx='50' cy='46' r='22' fill='none' stroke='%23e6b455' stroke-width='7'/%3E%3Cline x1='66' y1='62' x2='84' y2='82' stroke='%23e6b455' stroke-width='11' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='26' fill='%2308090d'/%3E%3Ctext x='50' y='68' font-family='sans-serif' font-size='52' font-weight='900' fill='%23ff7a2f' text-anchor='middle'%3ER%3C/text%3E%3C/svg%3E">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://image.tmdb.org">
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/style.css?v=2.1.0">
+<link rel="stylesheet" href="assets/css/style.css?v=3.0.0">
 </head>
 <body>
 
@@ -24,16 +24,11 @@
 <header class="topbar" id="topbar">
   <div class="topbar__inner">
 
-    <a class="brand" href="#/" data-route-home>
-      <span class="brand__mark" aria-hidden="true">
-        <svg viewBox="0 0 100 100" width="30" height="30">
-          <circle cx="44" cy="42" r="24" fill="none" stroke="currentColor" stroke-width="8"/>
-          <line x1="62" y1="60" x2="86" y2="86" stroke="currentColor" stroke-width="12" stroke-linecap="round"/>
-        </svg>
-      </span>
+    <a class="brand" href="#/" data-route-home aria-label="RANHUB — الرئيسية">
+      <span class="brand__mark" aria-hidden="true">R</span>
       <span class="brand__text">
-        <b>سينيسيرش</b>
-        <i>ابحث بالوصف، لا بالاسم</i>
+        <b>RANHUB</b>
+        <i>اوصف القصة… ونلقاه لك</i>
       </span>
     </a>
 
@@ -46,34 +41,29 @@
           type="search"
           name="q"
           enterkeyhint="search"
-          placeholder="اكتب اسم العمل… أو وصف القصة: «رجل يعيش نفس اليوم مرة بعد مرة»"
-          aria-label="ابحث عن فيلم أو مسلسل">
+          placeholder="اسم العمل… أو وصف القصة: «رجل يعيش نفس اليوم مرة بعد مرة»"
+          aria-label="ابحث عن فيلم أو مسلسل أو برنامج">
         <button type="button" class="search__clear" id="search-clear" aria-label="مسح البحث" hidden>&times;</button>
+        <button type="button" class="search__en" id="btn-to-en" title="حوّل بحثي للإنجليزي وأعد البحث" hidden>ترجم&nbsp;EN</button>
         <button type="submit" class="search__go">بحث</button>
-      </div>
-      <div class="search__modes" role="radiogroup" aria-label="طريقة البحث">
-        <button type="button" class="chip is-active" data-mode="auto"  role="radio" aria-checked="true">تلقائي</button>
-        <button type="button" class="chip"           data-mode="title" role="radio" aria-checked="false">بالاسم</button>
-        <button type="button" class="chip"           data-mode="plot"  role="radio" aria-checked="false">بوصف القصة</button>
-        <button type="button" class="chip"           data-mode="theme" role="radio" aria-checked="false">بالثيمة</button>
       </div>
       <div class="search__suggest" id="suggest" hidden></div>
     </form>
 
     <nav class="topbar__actions">
       <button class="iconbtn" id="btn-fav" title="اللي عجبني" aria-label="اللي عجبني">
-        <span aria-hidden="true" style="font-size:1.05rem">👍</span>
+        <span aria-hidden="true">👍</span>
         <span class="badge" id="fav-count" hidden>0</span>
       </button>
       <button class="iconbtn" id="btn-lang" title="لغة المحتوى" aria-label="لغة المحتوى"><span id="lang-label">ع</span></button>
       <button class="iconbtn" id="btn-settings" title="الإعدادات" aria-label="الإعدادات">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H1a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 2.6 7a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H7a1.7 1.7 0 0 0 1-1.5V1a2 2 0 1 1 4 0v.1A1.7 1.7 0 0 0 15 2.6a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V7a1.7 1.7 0 0 0 1.5 1H23a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" transform="scale(.86) translate(2 2)"/></svg>
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v2M12 19.4v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2.6 12h2M19.4 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>
       </button>
     </nav>
   </div>
 
   <div class="notice" id="key-notice" hidden>
-    <span id="key-notice-text">🟡 تشتغل الآن بوضع محدود (ويكيبيديا فقط). أضف مفتاح TMDB المجاني عشان تفتح البوسترات والتقييمات والأعمال المشابهة.</span>
+    <span id="key-notice-text">🟡 تشتغل الآن بوضع محدود.</span>
     <button class="notice__cta" id="notice-open-settings">أضف المفتاح</button>
     <button class="notice__x" id="notice-dismiss" aria-label="إخفاء">&times;</button>
   </div>
@@ -81,36 +71,75 @@
 
 <main id="main">
 
-  <!-- ==================== الاستكشاف (الرئيسية) ==================== -->
+  <!-- ==================== الاستكشاف ==================== -->
   <section class="view" id="view-home">
-    <div class="hero">
-      <h1 class="hero__title">استكشف <em>على ذوقك أنت.</em></h1>
-      <p class="hero__sub">اضغط 👍 على اللي يعجبك و👎 على اللي ما يعجبك، وهذي الصفحة تتغيّر لك. وإذا ما تذكر اسم عمل — اوصف قصته في البحث فوق.</p>
-      <p class="taste-state" id="taste-state"></p>
-      <div class="hero__tools">
-        <label class="filters__field">
-          <span>التصنيف العمري</span>
-          <select class="cert-filter">
-            <option value="all">كل التصنيفات</option>
-            <option value="family">عائلي فقط</option>
-            <option value="teen">+13 وأقل</option>
-            <option value="m17">🟠 +17 فقط</option>
-            <option value="m18">🔴 +18 فقط (NC-17 وما يعادله)</option>
-            <option value="adult">🔥 إباحي صريح فقط</option>
+
+    <nav class="tabs" id="tabs" role="tablist" aria-label="الأقسام">
+      <button class="tab is-active" data-tab="all"     role="tab" aria-selected="true">✨ الكل</button>
+      <button class="tab" data-tab="movie"             role="tab" aria-selected="false">🎬 أفلام</button>
+      <button class="tab" data-tab="tv"                role="tab" aria-selected="false">📺 مسلسلات</button>
+      <button class="tab" data-tab="reality"           role="tab" aria-selected="false">🎤 برامج واقعية</button>
+      <button class="tab" data-tab="doc"               role="tab" aria-selected="false">🎥 وثائقي</button>
+      <button class="tab tab--18" data-tab="mature"    role="tab" aria-selected="false">🔞 +18</button>
+      <button class="tab tab--18" data-tab="erotic"    role="tab" aria-selected="false">🌶️ إيروتيك</button>
+      <button class="tab tab--18" data-tab="explicit"  role="tab" aria-selected="false">⛔ إباحي صريح</button>
+    </nav>
+
+    <div class="feedbar">
+      <p class="feedbar__title" id="feed-title">✨ كل الأعمال</p>
+      <div class="feedbar__tools">
+        <label class="field--inline">
+          <span>الترتيب</span>
+          <select id="feed-sort">
+            <option value="popularity.desc">الأكثر شهرة</option>
+            <option value="primary_release_date.desc">الأحدث</option>
+            <option value="vote_average.desc">الأعلى تقييمًا</option>
+            <option value="revenue.desc">الأعلى إيرادًا</option>
+            <option value="foryou">🎯 على ذوقي</option>
+          </select>
+        </label>
+        <label class="field--inline">
+          <span>اللغة الأصلية</span>
+          <select id="feed-lang">
+            <option value="">كل اللغات</option>
+            <option value="ar">عربي</option>
+            <option value="en">إنجليزي</option>
+            <option value="fr">فرنسي</option>
+            <option value="ja">ياباني</option>
+            <option value="ko">كوري</option>
+            <option value="hi">هندي</option>
+            <option value="es">إسباني</option>
+            <option value="it">إيطالي</option>
+            <option value="de">ألماني</option>
+            <option value="tr">تركي</option>
+            <option value="ru">روسي</option>
+            <option value="zh">صيني</option>
+          </select>
+        </label>
+        <label class="field--inline">
+          <span>أقل تقييم</span>
+          <select id="feed-rating">
+            <option value="0">أي تقييم</option>
+            <option value="5">5+</option>
+            <option value="6">6+</option>
+            <option value="7">7+</option>
+            <option value="8">8+</option>
           </select>
         </label>
       </div>
-      <div class="hero__examples" id="hero-examples">
-        <span>جرّب:</span>
-        <button class="pill" data-example="رجل يستيقظ كل يوم على نفس اليوم ويعيده من جديد">اليوم يتكرر</button>
-        <button class="pill" data-example="محقق يطارد قاتل متسلسل يترك ألغاز مبنية على الخطايا السبع">قاتل وألغاز</button>
-        <button class="pill" data-example="فريق يدخل داخل الأحلام لسرقة الأفكار من العقل الباطن">سرقة الأحلام</button>
-        <button class="pill" data-example="مدرس كيمياء مصاب بالسرطان يتحول لصناعة المخدرات">مدرّس ينقلب</button>
-        <button class="pill" data-example="مسلسل رعب نفسي في بلدة صغيرة والأطفال يختفون">رعب في بلدة</button>
-      </div>
     </div>
 
-    <div id="home-rows" class="rows"></div>
+    <p class="agebar" id="age-warn" hidden>
+      🔞 هذا القسم للبالغين فقط. المحتوى مصنّف رسميًا +18، والوسوم مسحوبة من بيانات TMDB الحقيقية.
+    </p>
+
+    <div class="grid" id="feed-grid" aria-live="polite"></div>
+    <div class="empty" id="feed-empty" hidden></div>
+    <div class="loadmore" id="feed-more" hidden>
+      <button class="btn" id="btn-feed-more">اعرض المزيد</button>
+      <p class="loadmore__note" id="feed-count"></p>
+    </div>
+    <div class="sentinel" id="feed-sentinel" aria-hidden="true"></div>
   </section>
 
   <!-- ==================== نتائج البحث ==================== -->
@@ -120,62 +149,16 @@
         <h2 class="results__title" id="results-title">النتائج</h2>
         <p class="results__meta" id="results-meta"></p>
       </div>
-      <button class="btn btn--ghost" id="btn-back-home">الرئيسية</button>
-    </div>
-
-    <div class="filters" id="filters">
-      <div class="filters__group" role="group" aria-label="النوع">
-        <button class="chip is-active" data-filter-type="all">الكل</button>
-        <button class="chip" data-filter-type="movie">أفلام</button>
-        <button class="chip" data-filter-type="tv">مسلسلات</button>
-      </div>
-      <label class="filters__field">
-        <span>الترتيب</span>
-        <select id="sort-by">
-          <option value="relevance">الأقرب للبحث</option>
-          <option value="rating">الأعلى تقييمًا</option>
-          <option value="popularity">الأكثر شهرة</option>
-          <option value="newest">الأحدث</option>
-          <option value="oldest">الأقدم</option>
-        </select>
-      </label>
-      <label class="filters__field">
-        <span>أقل تقييم</span>
-        <select id="min-rating">
-          <option value="0">أي تقييم</option>
-          <option value="5">5+</option>
-          <option value="6">6+</option>
-          <option value="7">7+</option>
-          <option value="8">8+</option>
-        </select>
-      </label>
-      <label class="filters__field">
-        <span>من سنة</span>
-        <input type="number" id="year-from" min="1900" max="2100" placeholder="1900" inputmode="numeric">
-      </label>
-      <label class="filters__field">
-        <span>إلى سنة</span>
-        <input type="number" id="year-to" min="1900" max="2100" placeholder="2100" inputmode="numeric">
-      </label>
-      <label class="filters__field">
-        <span>التصنيف العمري</span>
-        <select class="cert-filter" id="cert-filter">
-          <option value="all">كل التصنيفات</option>
-          <option value="family">عائلي فقط</option>
-          <option value="teen">+13 وأقل</option>
-          <option value="m17">🟠 +17 فقط</option>
-          <option value="m18">🔴 +18 فقط (NC-17 وما يعادله)</option>
-          <option value="adult">🔥 إباحي صريح فقط</option>
-        </select>
-      </label>
-      <button class="btn btn--ghost btn--sm" id="btn-reset-filters">تصفير</button>
+      <button class="btn btn--ghost" id="btn-back-home">الاستكشاف</button>
     </div>
 
     <div class="grid" id="results-grid" aria-live="polite"></div>
     <div class="empty" id="results-empty" hidden></div>
     <div class="loadmore" id="loadmore-wrap" hidden>
       <button class="btn" id="btn-loadmore">اعرض المزيد</button>
+      <p class="loadmore__note" id="results-count"></p>
     </div>
+    <div class="sentinel" id="results-sentinel" aria-hidden="true"></div>
   </section>
 
   <!-- ==================== اللي عجبني ==================== -->
@@ -185,8 +168,15 @@
         <h2 class="results__title">👍 اللي عجبني</h2>
         <p class="results__meta" id="liked-meta"></p>
       </div>
-      <button class="btn btn--ghost" id="btn-liked-back">الاستكشاف</button>
+      <div class="results__actions">
+        <button class="btn btn--ghost btn--sm" id="btn-export">⬇️ تصدير</button>
+        <button class="btn btn--ghost btn--sm" id="btn-import">⬆️ استيراد</button>
+        <button class="btn btn--ghost btn--sm" id="btn-reset-taste">صفّر ذوقي</button>
+        <button class="btn btn--ghost btn--sm" id="btn-liked-back">الاستكشاف</button>
+      </div>
     </div>
+    <input type="file" id="import-file" accept="application/json,.json" hidden>
+
     <div class="grid" id="liked-grid"></div>
     <div class="empty" id="liked-empty" hidden>🤍 القائمة فاضية. اضغط 👍 تحت أي بوستر عشان يدخل هنا ويأثّر على الاستكشاف.</div>
 
@@ -201,10 +191,16 @@
     <article id="detail-panel"></article>
   </section>
 
+  <!-- ==================== صفحة شخص ==================== -->
+  <section class="view" id="view-person" hidden>
+    <article id="person-panel"></article>
+  </section>
+
 </main>
 
 <footer class="footer">
-  <p>🎬 البيانات من <a href="https://www.themoviedb.org/" target="_blank" rel="noopener">TMDB</a> و<a href="https://ar.wikipedia.org/" target="_blank" rel="noopener">ويكيبيديا</a>. هذا المشروع غير تابع ولا معتمد من TMDB.</p>
+  <p>🎬 <b>RANHUB</b> — البيانات من <a href="https://www.themoviedb.org/" target="_blank" rel="noopener">TMDB</a> و<a href="https://ar.wikipedia.org/" target="_blank" rel="noopener">ويكيبيديا</a>. غير تابع ولا معتمد من TMDB.</p>
+  <p class="footer__age">🔞 أقسام +18 مخصّصة للبالغين فقط.</p>
 </footer>
 
 <!-- ==================== الإعدادات ==================== -->
@@ -217,35 +213,7 @@
     </header>
 
     <div class="modal__body">
-      <label class="field">
-        <span class="field__label">مفتاح TMDB خاص فيك <em>(اختياري)</em></span>
-        <input type="password" id="api-key" placeholder="الموقع فيه مفتاح مشترك جاهز — اتركه فاضي" autocomplete="off" spellcheck="false">
-        <small class="field__hint">
-          الموقع شغّال أصلًا بمفتاح مشترك مدمج، ما تحتاج تسوي شي.
-          لو تبي مفتاحك الخاص (حصة أعلى ومستقلة):
-          سجّل في <a href="https://www.themoviedb.org/signup" target="_blank" rel="noopener">themoviedb.org</a> ثم
-          <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">اطلب مفتاح API</a> —
-          يقبل <b>v3</b> أو توكن <b>v4 Bearer</b>. يُحفظ في متصفحك فقط.
-        </small>
-      </label>
-
-      <label class="field">
-        <span class="field__label">مفتاح OMDb <em>(اختياري)</em></span>
-        <input type="password" id="omdb-key" placeholder="يفتح تقييمات IMDb وروتن توميتوز" autocomplete="off" spellcheck="false">
-        <small class="field__hint">
-          مفتاح مجاني فوري من <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener">omdbapi.com</a>
-          (١٠٠٠ طلب باليوم). بيضيف لصفحة العمل تقييم IMDb ونسبة Rotten Tomatoes وميتاكريتك والجوائز وشبّاك التذاكر.
-        </small>
-      </label>
-
-      <label class="field">
-        <span class="field__label">بريدك لرفع حد الترجمة <em>(اختياري)</em></span>
-        <input type="email" id="tr-email" placeholder="name@example.com" autocomplete="off" spellcheck="false">
-        <small class="field__hint">
-          ترجمة الملخصات تمر على <a href="https://mymemory.translated.net/" target="_blank" rel="noopener">MyMemory</a> المجانية:
-          ٥٠٠٠ حرف يوميًا بدون بريد، و٥٠ ألف مع بريد. يُحفظ في متصفحك ويُرسل لـ MyMemory فقط مع طلبات الترجمة.
-        </small>
-      </label>
+      <div class="keystate" id="key-state"></div>
 
       <div class="field-row">
         <label class="field">
@@ -269,15 +237,72 @@
             <option value="MA">المغرب</option>
             <option value="US">أمريكا</option>
             <option value="GB">بريطانيا</option>
+            <option value="FR">فرنسا</option>
+            <option value="DE">ألمانيا</option>
           </select>
         </label>
       </div>
 
-      <div class="keystate" id="key-state"></div>
+      <label class="switch">
+        <input type="checkbox" id="set-autotr">
+        <span><b>ترجمة تلقائية للقصة</b><i>يترجم أي ملخص أو قصة إنجليزية للعربي بدون ما تضغط شي</i></span>
+      </label>
+
+      <h3 class="modal__sec">المصادر</h3>
+
+      <label class="field">
+        <span class="field__label">مفتاح TMDB خاص فيك <em>(اختياري)</em></span>
+        <input type="password" id="api-key" placeholder="الموقع فيه مفتاح مشترك جاهز — اتركه فاضي" autocomplete="off" spellcheck="false">
+        <small class="field__hint">
+          مفتاح مجاني من <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">themoviedb.org</a> —
+          يقبل <b>v3</b> أو توكن <b>v4</b>. يُحفظ في متصفحك فقط.
+        </small>
+      </label>
+
+      <label class="field">
+        <span class="field__label">مفتاح OMDb <em>(مجاني)</em></span>
+        <input type="password" id="omdb-key" placeholder="تقييمات IMDb وروتن توميتوز" autocomplete="off" spellcheck="false">
+        <small class="field__hint">
+          <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener">omdbapi.com</a> — ١٠٠٠ طلب باليوم.
+          يضيف تقييم IMDb ونسبة Rotten Tomatoes وميتاكريتك والجوائز وشبّاك التذاكر.
+        </small>
+      </label>
+
+      <label class="field">
+        <span class="field__label">مفتاح Fanart.tv <em>(مجاني)</em></span>
+        <input type="password" id="fanart-key" placeholder="بوسترات وشعارات بدقة عالية" autocomplete="off" spellcheck="false">
+        <small class="field__hint">
+          <a href="https://fanart.tv/get-an-api-key/" target="_blank" rel="noopener">fanart.tv</a> —
+          يضيف شعار العمل وخلفيات بدقة أعلى من TMDB.
+        </small>
+      </label>
+
+      <label class="field">
+        <span class="field__label">Trakt Client ID <em>(مجاني)</em></span>
+        <input type="password" id="trakt-key" placeholder="إحصاءات المشاهدة والقوائم" autocomplete="off" spellcheck="false">
+        <small class="field__hint">
+          <a href="https://trakt.tv/oauth/applications" target="_blank" rel="noopener">trakt.tv</a> —
+          يضيف عدد المشاهدات وترتيب الشعبية الأسبوعي.
+        </small>
+      </label>
+
+      <label class="field">
+        <span class="field__label">بريدك لرفع حد الترجمة <em>(اختياري)</em></span>
+        <input type="email" id="tr-email" placeholder="name@example.com" autocomplete="off" spellcheck="false">
+        <small class="field__hint">
+          الترجمة عبر <a href="https://mymemory.translated.net/" target="_blank" rel="noopener">MyMemory</a>:
+          ٥٠٠٠ حرف يوميًا بدون بريد، و٥٠ ألف مع بريد.
+        </small>
+      </label>
+
+      <p class="field__hint">
+        🟢 <b>مصادر شغّالة بدون أي مفتاح:</b> ويكيبيديا (بحث القصة) · Wikidata (روابط مباشرة) ·
+        TVmaze (مواعيد الحلقات) · MyMemory (الترجمة).
+      </p>
     </div>
 
     <footer class="modal__foot">
-      <button class="btn btn--ghost" id="btn-clear-key">حذف مفتاحي الخاص</button>
+      <button class="btn btn--ghost" id="btn-clear-key">حذف مفتاحي</button>
       <button class="btn btn--ghost" id="btn-test-key">🔍 تحقق من الاتصال</button>
       <button class="btn" id="btn-save-settings">حفظ</button>
     </footer>
@@ -286,15 +311,16 @@
 
 <div class="toast" id="toast" hidden></div>
 
-<script src="assets/js/config.js?v=2.1.0"></script>
-<script src="assets/js/taste.js?v=2.1.0"></script>
-<script src="assets/js/certs.js?v=2.1.0"></script>
-<script src="assets/js/tmdb.js?v=2.1.0"></script>
-<script src="assets/js/wiki.js?v=2.1.0"></script>
-<script src="assets/js/sources.js?v=2.1.0"></script>
-<script src="assets/js/links.js?v=2.1.0"></script>
-<script src="assets/js/search.js?v=2.1.0"></script>
-<script src="assets/js/ui.js?v=2.1.0"></script>
-<script src="assets/js/app.js?v=2.1.0"></script>
+<script src="assets/js/config.js?v=3.0.0"></script>
+<script src="assets/js/taste.js?v=3.0.0"></script>
+<script src="assets/js/certs.js?v=3.0.0"></script>
+<script src="assets/js/tmdb.js?v=3.0.0"></script>
+<script src="assets/js/wiki.js?v=3.0.0"></script>
+<script src="assets/js/sources.js?v=3.0.0"></script>
+<script src="assets/js/links.js?v=3.0.0"></script>
+<script src="assets/js/feed.js?v=3.0.0"></script>
+<script src="assets/js/search.js?v=3.0.0"></script>
+<script src="assets/js/ui.js?v=3.0.0"></script>
+<script src="assets/js/app.js?v=3.0.0"></script>
 </body>
 </html>
