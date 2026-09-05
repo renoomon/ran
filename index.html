@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://image.tmdb.org">
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/style.css?v=3.1.0">
+<link rel="stylesheet" href="assets/css/style.css?v=3.2.0">
 </head>
 <body>
 
@@ -307,6 +307,43 @@
         🟢 <b>مصادر شغّالة بدون أي مفتاح:</b> ويكيبيديا (بحث القصة) · Wikidata (روابط مباشرة) ·
         TVmaze (مواعيد الحلقات) · MyMemory (الترجمة).
       </p>
+
+      <h3 class="modal__sec">أضف مصادر بيانات بنفسك</h3>
+      <p class="field__hint">
+        📊 تختار مزوّدًا جاهزًا أو تلصق رابط API بنفسك، والموقع ينادي كل مصدر لكل عمل
+        ويعرض اللي رجّعه تحت «بيانات إضافية» في صفحة العمل. كل مصدر له زر تحقق مستقل.
+      </p>
+
+      <div class="srclist" id="ds-list"></div>
+
+      <div class="field-row">
+        <label class="field" style="flex:1 1 190px">
+          <span class="field__label">المزوّد</span>
+          <select id="ds-preset"></select>
+        </label>
+        <label class="field" style="flex:1 1 150px">
+          <span class="field__label">الاسم</span>
+          <input type="text" id="ds-name" placeholder="يُستنتج من الرابط">
+        </label>
+      </div>
+
+      <label class="field">
+        <span class="field__label">رابط الـAPI</span>
+        <input type="text" id="ds-url" dir="ltr" placeholder="https://api.example.com/movie/{imdb}?api_key={key}">
+        <small class="field__hint">
+          البدائل: <code>{key}</code> <code>{imdb}</code> <code>{tmdb}</code>
+          <code>{type}</code> <code>{title}</code> <code>{year}</code>
+        </small>
+      </label>
+
+      <label class="field">
+        <span class="field__label">مفتاح API <em>(اختياري)</em></span>
+        <span class="keyrow">
+          <input type="password" id="ds-key" placeholder="لو المزوّد يحتاج مفتاح" autocomplete="off">
+          <button type="button" class="keyrow__test" id="btn-ds-add">أضف</button>
+        </span>
+        <span class="keyrow__out" id="out-ds-add"></span>
+      </label>
     </div>
 
     <footer class="modal__foot">
@@ -329,45 +366,66 @@
 
     <div class="modal__body">
       <p class="field__hint">
-        🎬 أضف سيرفرات المشاهدة الرسمية الخاصة بك. كل مصدر له زر تحقق مستقل،
-        والموقع يبني منه رابط المشاهدة لكل عمل تلقائيًا.
+        🎬 الصق <b>رابط الموقع فقط</b> — مثال <code dir="ltr">https://example.com</code> —
+        وRANHUB يبني بنفسه رابط البحث داخله عن كل عمل بالاسم والسنة. بدون مفتاح API ولا قوالب.
       </p>
 
       <div class="srclist" id="src-list"></div>
 
-      <h3 class="modal__sec">إضافة مصدر</h3>
-
-      <div class="field-row">
-        <label class="field" style="flex:1 1 160px">
-          <span class="field__label">اسم المصدر</span>
-          <input type="text" id="src-name" placeholder="يُستنتج من الرابط لو تركته فاضي">
-        </label>
-        <label class="field" style="flex:0 1 190px">
-          <span class="field__label">النوع</span>
-          <select id="src-type">
-            <option value="embed">مشغّل داخل الصفحة</option>
-            <option value="link">رابط تبويب جديد</option>
-            <option value="api">API يرجّع رابط</option>
-          </select>
-        </label>
-      </div>
+      <h3 class="modal__sec">إضافة موقع</h3>
 
       <label class="field">
-        <span class="field__label">رابط المصدر (قالب)</span>
-        <input type="text" id="src-url" dir="ltr" placeholder="https://your-cdn.com/embed/{imdb}">
+        <span class="field__label">رابط الموقع</span>
+        <span class="keyrow">
+          <input type="text" id="src-url" dir="ltr" placeholder="https://example.com">
+          <button type="button" class="keyrow__test" id="btn-src-add">أضف</button>
+        </span>
+        <span class="keyrow__out" id="out-src-add"></span>
+        <small class="field__hint" id="src-preview"></small>
+      </label>
+
+      <details class="srcadv" id="src-adv">
+        <summary>خيارات متقدّمة — نمط البحث والاسم والقوالب</summary>
+
+        <div class="field-row">
+          <label class="field" style="flex:1 1 160px">
+            <span class="field__label">اسم المصدر</span>
+            <input type="text" id="src-name" placeholder="يُستنتج من الرابط">
+          </label>
+          <label class="field" style="flex:1 1 200px">
+            <span class="field__label">نمط البحث داخل الموقع</span>
+            <select id="src-pattern"></select>
+          </label>
+        </div>
+
+        <label class="field" id="src-tpl-wrap" hidden>
+          <span class="field__label">قالب البحث المخصّص</span>
+          <input type="text" id="src-tpl" dir="ltr" placeholder="https://example.com/find?title={title}">
+        </label>
+
+        <div class="field-row">
+          <label class="field" style="flex:1 1 200px">
+            <span class="field__label">النوع</span>
+            <select id="src-type">
+              <option value="site">موقع كامل — يبحث فيه بالاسم</option>
+              <option value="embed">مشغّل داخل الصفحة (قالب)</option>
+              <option value="link">رابط يفتح في تبويب جديد</option>
+              <option value="api">API يرجّع رابط تشغيل</option>
+            </select>
+          </label>
+          <label class="field" style="flex:1 1 160px">
+            <span class="field__label">مفتاح API <em>(اختياري)</em></span>
+            <input type="password" id="src-key" placeholder="لأنواع القوالب فقط" autocomplete="off">
+          </label>
+        </div>
+
         <small class="field__hint">
-          البدائل المتاحة:
-          <code>{imdb}</code> <code>{tmdb}</code> <code>{title}</code> <code>{title_raw}</code>
-          <code>{year}</code> <code>{type}</code> <code>{season}</code> <code>{episode}</code> <code>{key}</code>
+          بدائل القوالب:
+          <code>{title}</code> <code>{title_raw}</code> <code>{year}</code>
+          <code>{imdb}</code> <code>{tmdb}</code> <code>{type}</code>
+          <code>{season}</code> <code>{episode}</code> <code>{key}</code>
         </small>
-      </label>
-
-      <label class="field">
-        <span class="field__label">مفتاح API <em>(اختياري)</em></span>
-        <input type="password" id="src-key" placeholder="يُرسل كـ Bearer، أو ضعه في القالب بـ {key}" autocomplete="off">
-      </label>
-
-      <button class="btn" id="btn-src-add">➕ أضف المصدر</button>
+      </details>
 
       <p class="field__hint">
         ⚖️ المصادر اللي تضيفها مسؤوليتك أنت — تأكد إن عندك حق البث لكل مصدر تضيفه.
@@ -383,17 +441,18 @@
 
 <div class="toast" id="toast" hidden></div>
 
-<script src="assets/js/config.js?v=3.1.0"></script>
-<script src="assets/js/taste.js?v=3.1.0"></script>
-<script src="assets/js/certs.js?v=3.1.0"></script>
-<script src="assets/js/tmdb.js?v=3.1.0"></script>
-<script src="assets/js/wiki.js?v=3.1.0"></script>
-<script src="assets/js/sources.js?v=3.1.0"></script>
-<script src="assets/js/mysources.js?v=3.1.0"></script>
-<script src="assets/js/links.js?v=3.1.0"></script>
-<script src="assets/js/feed.js?v=3.1.0"></script>
-<script src="assets/js/search.js?v=3.1.0"></script>
-<script src="assets/js/ui.js?v=3.1.0"></script>
-<script src="assets/js/app.js?v=3.1.0"></script>
+<script src="assets/js/config.js?v=3.2.0"></script>
+<script src="assets/js/taste.js?v=3.2.0"></script>
+<script src="assets/js/certs.js?v=3.2.0"></script>
+<script src="assets/js/tmdb.js?v=3.2.0"></script>
+<script src="assets/js/wiki.js?v=3.2.0"></script>
+<script src="assets/js/sources.js?v=3.2.0"></script>
+<script src="assets/js/mysources.js?v=3.2.0"></script>
+<script src="assets/js/datasources.js?v=3.2.0"></script>
+<script src="assets/js/links.js?v=3.2.0"></script>
+<script src="assets/js/feed.js?v=3.2.0"></script>
+<script src="assets/js/search.js?v=3.2.0"></script>
+<script src="assets/js/ui.js?v=3.2.0"></script>
+<script src="assets/js/app.js?v=3.2.0"></script>
 </body>
 </html>

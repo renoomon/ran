@@ -652,3 +652,37 @@ main{ max-width:1560px; margin-inline:auto; padding:clamp(1rem, 2.5vw, 1.8rem) c
 .watch__frame{ position:relative; aspect-ratio:16/9; border-radius:var(--r);
   overflow:hidden; background:#000; border:1px solid var(--line); }
 .watch__frame iframe{ position:absolute; inset:0; width:100%; height:100%; border:0; }
+
+/* ============================================================
+   نموذج إضافة المصدر — خيارات متقدّمة
+   ============================================================ */
+
+.srcadv{ margin:.4rem 0 .2rem; border:1px solid var(--line); border-radius:var(--r-sm);
+  background:var(--surface); overflow:hidden; }
+.srcadv > summary{ cursor:pointer; padding:.6rem .85rem; font-size:.82rem; font-weight:800;
+  color:var(--text-2); list-style:none; }
+.srcadv > summary::-webkit-details-marker{ display:none; }
+.srcadv > summary::before{ content:'▾ '; color:var(--hot); }
+.srcadv[open] > summary{ border-bottom:1px solid var(--line-soft); }
+.srcadv > *:not(summary){ margin-inline:.85rem; }
+.srcadv > *:not(summary):last-child{ margin-bottom:.85rem; }
+
+#src-preview code{ display:inline-block; margin-top:.25rem; direction:ltr; text-align:start;
+  word-break:break-all; color:var(--hot); }
+
+.watch__note{ font-size:.82rem; color:var(--text-3); line-height:1.7; }
+
+/* ============================================================
+   بيانات إضافية من مصادر المشغّل
+   ============================================================ */
+
+.dslist{ display:grid; gap:.6rem; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); }
+.ds{ padding:.75rem .9rem; border-radius:var(--r-sm);
+  border:1px solid var(--line); background:var(--surface); }
+.ds__name{ display:block; font-size:.85rem; font-weight:900; color:var(--hot); margin-bottom:.4rem; }
+.ds__wait, .ds__bad{ font-size:.78rem; color:var(--text-3); font-style:normal; }
+.ds__rows{ margin:0; display:grid; grid-template-columns:auto 1fr; gap:.2rem .6rem; font-size:.79rem; }
+.ds__rows dt{ color:var(--text-3); white-space:nowrap; }
+.ds__rows dd{ margin:0; color:var(--text); font-weight:700; word-break:break-word; }
+.ds__rows dd a{ color:var(--hot); }
+.ds__skip{ font-size:.76rem; color:var(--text-3); margin:.5rem 0 0; line-height:1.7; }

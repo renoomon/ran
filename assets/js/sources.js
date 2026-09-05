@@ -109,11 +109,14 @@
      Wikidata — مجاني ومفتوح، يعطينا معرّفات المواقع الأخرى
      ============================================================ */
 
+  /* تصحيح: P5786 هو معرّف Moviepilot.de لا Trakt — كان يولّد روابط Trakt مكسورة.
+     Trakt الصحيح: P8013 (فيه بادئة movies/ أو shows/) وP12492 (رقم مجرّد).
+     وP4947 للأفلام فقط، فالمسلسلات تحتاج P4983. */
   var WD_PROPS = {
     P345:  'imdb',        P1258: 'rotten',    P1712: 'metacritic',
-    P6127: 'letterboxd',  P4947: 'tmdb',      P4835: 'tvdb',
-    P5786: 'trakt',       P1874: 'netflix',   P11460: 'simkl',
-    P4086: 'mal'
+    P6127: 'letterboxd',  P4947: 'tmdb',      P4983: 'tmdbTv',
+    P4835: 'tvdb',        P8013: 'trakt',     P12492: 'traktNum',
+    P1874: 'netflix',     P11460: 'simkl',    P4086: 'mal'
   };
 
   var wikidata = {
@@ -134,6 +137,9 @@
           var name = WD_PROPS[pid];
           if (name && !out[name]) out[name] = r.v.value;
         });
+        /* P4947 أفلام فقط — المسلسل ياخذ معرّفه من P4983 */
+        if (!out.tmdb && out.tmdbTv) out.tmdb = out.tmdbTv;
+        if (!out.trakt && out.traktNum) out.trakt = out.traktNum;
         return Object.keys(out).length ? out : null;
       }).catch(function () { return null; });
     }

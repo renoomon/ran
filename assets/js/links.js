@@ -76,8 +76,11 @@
       '#ffcc33', !!wd.metacritic);
 
     add('Trakt',
+      /* P8013 يجي ومعه البادئة (movies/… أو shows/…) وP12492 رقم مجرّد — نتعامل مع الشكلين */
       wd.trakt
-        ? 'https://trakt.tv/' + (isMovie ? 'movies/' : 'shows/') + enc(wd.trakt)
+        ? 'https://trakt.tv/' + (String(wd.trakt).indexOf('/') !== -1
+            ? String(wd.trakt).split('/').map(enc).join('/')
+            : (isMovie ? 'movies/' : 'shows/') + enc(wd.trakt))
         : 'https://trakt.tv/search?query=' + enc(name),
       '#ed1c24', !!wd.trakt);
 

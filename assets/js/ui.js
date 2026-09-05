@@ -311,6 +311,7 @@
         /* المشاهدة تحلّ محلّ التريلر: التريلر ما يظهر إلا لو ما فيه ولا مصدر مضاف */
         (trailerHtml && !hasWatchSources()
           ? '<section><h3 class="sec__title">التريلر</h3>' + trailerHtml + '</section>' : '') +
+        '<section id="dt-datasources"></section>' +
         '<section id="dt-links">' + linksHtml(d) + '</section>' +
         (castHtml ? '<section><h3 class="sec__title">طاقم العمل <span class="sec__note">اضغط أي اسم لأعماله</span></h3>' + castHtml + '</section>' : '') +
         '<section id="dt-extra"></section>' +
@@ -382,11 +383,13 @@
     if (!sources.length) {
       return '<h3 class="sec__title">المشاهدة</h3>' +
         '<div class="empty" style="padding:1.6rem"><b>🎬 ما فيه مصادر مضافة</b>' +
-        '<p>افتح 🎬 <b>إعدادات المصادر</b> من الأعلى وأضف سيرفراتك، وبتظهر هنا لكل عمل.</p></div>';
+        '<p>افتح 🎬 <b>إعدادات المصادر</b> من الأعلى والصق رابط موقعك — الرابط فقط، ' +
+        'والموقع يبحث فيه عن كل عمل بنفسه.</p></div>';
     }
 
     var active = sources.filter(function (s) { return s.id === activeId; })[0] || sources[0];
     var missing = CS.mySources.missingFor(active, item);
+    var url = CS.mySources.urlFor(active, item);
 
     var bar = '<div class="watch__bar">' + sources.map(function (s) {
       var bad = s.status && s.status.ok === false ? ' title="آخر تحقق: فشل"' : '';
@@ -396,16 +399,37 @@
     }).join('') + '</div>';
 
     var body;
+
     if (missing.length) {
       body = '<div class="empty" style="padding:1.4rem">🟡 هذا المصدر يحتاج ' +
         esc(missing.join(' و')) + '، وما هو متوفر لهذا العمل.</div>';
+
+    } else if (active.type === 'site') {
+      /* موقع كامل: نحاول نعرض نتيجة بحثه داخل الصفحة، والزر دائمًا موجود.
+         المتصفح ما يخلّينا نعرف مسبقًا هل الموقع يسمح بالعرض داخل الصفحة،
+         فبدل ما نخمّن نحط الاثنين ونقول للمستخدم وش يسوي لو الإطار طلع فاضي. */
+      var term = CS.mySources.searchTerm(item);
+      var openBtn = '<a class="btn" target="_blank" rel="noopener noreferrer" href="' + esc(url) + '">' +
+        '🔎 افتح البحث عن «' + esc(term) + '» في ' + esc(active.name) + '</a>';
+
+      body =
+        '<div class="watch__frame"><iframe src="' + esc(url) +
+        '" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture; fullscreen" ' +
+        'referrerpolicy="no-referrer-when-downgrade" loading="lazy" ' +
+        'title="بحث ' + esc(term) + ' في ' + esc(active.name) + '"></iframe></div>' +
+        '<div class="watch__bar">' + openBtn + '</div>' +
+        '<div class="watch__note">🟡 طلع الإطار فوق فاضي؟ يعني ' + esc(active.name) +
+        ' يمنع العرض داخل صفحات ثانية — استخدم الزر وبيفتح على نتيجة البحث مباشرة.</div>';
+
     } else if (active.type === 'embed') {
-      body = '<div class="watch__frame"><iframe src="' + esc(CS.mySources.urlFor(active, item)) +
-        '" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture" ' +
+      body = '<div class="watch__frame"><iframe src="' + esc(url) +
+        '" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture; fullscreen" ' +
         'referrerpolicy="origin" title="مشاهدة ' + esc(item.title) + '"></iframe></div>';
+
     } else if (active.type === 'link') {
       body = '<div class="watch__bar"><a class="btn" target="_blank" rel="noopener noreferrer" href="' +
-        esc(CS.mySources.urlFor(active, item)) + '">▶️ افتح المشاهدة في ' + esc(active.name) + '</a></div>';
+        esc(url) + '">▶️ افتح المشاهدة في ' + esc(active.name) + '</a></div>';
+
     } else {
       body = resolved
         ? '<div class="watch__frame"><iframe src="' + esc(resolved) +
@@ -417,8 +441,43 @@
       '<div class="watch">' + bar + body + '</div>';
   }
 
+  /* بيانات إضافية جاءت من مصادر البيانات اللي أضافها المشغّل */
+  function dataSection(blocks) {
+    if (!blocks || !blocks.length) return '';
+
+    /* مصدر ما ينطبق على نوع العمل أصلًا ما يستاهل بطاقة كاملة — سطر واحد يكفي */
+    var skipped = blocks.filter(function (b) { return !b.loading && !b.ok && /^يحتاج /.test(b.detail || ''); });
+    var shown   = blocks.filter(function (b) { return skipped.indexOf(b) === -1; });
+    if (!shown.length && !skipped.length) return '';
+
+    var cards = shown.map(function (b) {
+      var body;
+      if (b.loading) body = '<i class="ds__wait">⏳ يجيب…</i>';
+      else if (!b.ok) body = '<i class="ds__bad">🔴 ' + esc(b.detail || 'ما رجّع بيانات') + '</i>';
+      else if (!b.rows.length) body = '<i class="ds__bad">🟡 ما فيه بيانات لهذا العمل</i>';
+      else body = '<dl class="ds__rows">' + b.rows.map(function (r) {
+        var v = String(r[1]);
+        var val = /^https?:\/\//.test(v)
+          ? '<a href="' + esc(v) + '" target="_blank" rel="noopener noreferrer">' + esc(v) + '</a>'
+          : esc(v);
+        return '<dt>' + esc(r[0]) + '</dt><dd>' + val + '</dd>';
+      }).join('') + '</dl>';
+
+      return '<div class="ds"><b class="ds__name">' + esc(b.name) + '</b>' + body + '</div>';
+    }).join('');
+
+    var note = skipped.length
+      ? '<p class="ds__skip">⚪ ما ناديت ' +
+        skipped.map(function (b) { return esc(b.name) + ' (' + esc(b.detail) + ')'; }).join('، ') + '.</p>'
+      : '';
+
+    return '<h3 class="sec__title">بيانات إضافية <span class="sec__note">من مصادرك</span></h3>' +
+      (cards ? '<div class="dslist">' + cards + '</div>' : '') + note;
+  }
+
   CS.ui = {
     watchSection: watchSection,
+    dataSection: dataSection,
     toast: toast,
     skeletons: skeletons,
     card: card,

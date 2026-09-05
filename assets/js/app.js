@@ -528,6 +528,7 @@
       detailCtx = { d: d, extra: extra, token: token };
       CS.taste.enrich(d);
       renderWatch();
+      renderExtraData();
 
       if (extra.translating) {
         CS.wiki.toArabic(extra.summary, 1200).then(function (ar) {
@@ -754,6 +755,10 @@
     $('#set-region').value = CS.state.region;
     $('#set-autotr').checked = autoTranslateOn();
     $('#set-adultonly').checked = adultOnlyOn();
+    fillPresets();
+    renderDataSources();
+    var dsOut = $('#out-ds-add');
+    if (dsOut) { dsOut.className = 'keyrow__out'; dsOut.textContent = ''; }
 
     var st = $('#key-state');
     st.className = 'keystate';
@@ -987,7 +992,11 @@
      ============================================================ */
 
   function openSources() {
+    fillPatterns();
     renderSources();
+    var out = $('#out-src-add');
+    if (out) { out.className = 'keyrow__out'; out.textContent = ''; }
+    $('#src-preview').textContent = '';
     $('#srcmodal').hidden = false;
     document.body.classList.add('is-locked');
     setTimeout(function () { $('#src-url').focus(); }, 60);
@@ -998,9 +1007,10 @@
     if ($('#settings').hidden) document.body.classList.remove('is-locked');
   }
 
-  function statusLine(s) {
-    if (!s.status) return '<i class="srcitem__st">⚪ ما تحقّقت منه بعد</i>';
-    return '<i class="srcitem__st ' + (s.status.ok ? 'is-ok' : 'is-bad') + '">' +
+  function statusLine(s, cls) {
+    cls = cls || 'srcitem__st';
+    if (!s.status) return '<i class="' + cls + '">⚪ ما تحقّقت منه بعد</i>';
+    return '<i class="' + cls + ' ' + (s.status.ok ? 'is-ok' : 'is-bad') + '">' +
       (s.status.ok ? '🟢 ' : '🔴 ') + esc0(s.status.detail) + '</i>';
   }
 
@@ -1010,17 +1020,19 @@
 
     if (!list.length) {
       box.innerHTML = '<div class="empty" style="padding:1.4rem">' +
-        '<b>⚪ ما فيه مصادر</b><p>أضف أول سيرفر لك من الخانات تحت.</p></div>';
+        '<b>⚪ ما فيه مواقع</b><p>الصق رابط أول موقع لك تحت — الرابط فقط، بلا شي ثاني.</p></div>';
       return;
     }
 
     box.innerHTML = list.map(function (s) {
+      var where = CS.mySources.TYPES[s.type] || s.type;
+
       return '<div class="srcitem' + (s.enabled ? '' : ' is-off') + '" data-src-row="' + esc0(s.id) + '">' +
         '<div class="srcitem__top">' +
           '<b class="srcitem__name">' + esc0(s.name) + '</b>' +
-          '<span class="srcitem__type">' + esc0(CS.mySources.TYPES[s.type] || s.type) + '</span>' +
+          '<span class="srcitem__type">' + esc0(where) + '</span>' +
         '</div>' +
-        '<code class="srcitem__url" dir="ltr">' + esc0(s.url) + '</code>' +
+        '<code class="srcitem__url" dir="ltr">' + esc0(sampleUrl(s)) + '</code>' +
         statusLine(s) +
         '<div class="srcitem__acts">' +
           '<button class="btn btn--sm" data-src-test="' + esc0(s.id) + '">تحقق</button>' +
@@ -1032,32 +1044,104 @@
     }).join('');
   }
 
+  /* مثال حي للرابط اللي بيتولّد — يشوفه المستخدم قبل ما يضيف */
+  var SAMPLE = { id: 27205, type: 'movie', title: 'Inception', originalTitle: 'Inception',
+                 year: 2010, imdbId: 'tt1375666', source: 'tmdb' };
+
+  function sampleUrl(s) {
+    try { return CS.mySources.urlFor(s, SAMPLE); }
+    catch (e) { return s.url; }
+  }
+
+  /* يعبّي قائمة أنماط البحث ويحدّث المعاينة الحية */
+  function fillPatterns() {
+    var sel = $('#src-pattern');
+    if (sel.options.length) return;
+    CS.mySources.PATTERNS.forEach(function (p) {
+      sel.add(new Option(p.label, p.id));
+    });
+    sel.add(new Option('قالب مخصّص أكتبه بنفسي', 'custom'));
+  }
+
+  /* يظهر/يخفي حقول النموذج حسب النوع والنمط المختار */
+  function syncSrcForm() {
+    var type = $('#src-type').value;
+    var isSite = type === 'site';
+    $('#src-pattern').closest('.field').hidden = !isSite;
+    $('#src-tpl-wrap').hidden = !(isSite && $('#src-pattern').value === 'custom');
+    $('#src-key').closest('.field').hidden = isSite;
+    $('#src-url').placeholder = isSite
+      ? 'https://example.com'
+      : 'https://your-cdn.com/embed/{imdb}';
+  }
+
+  function previewSource() {
+    var raw = $('#src-url').value.trim();
+    var out = $('#src-preview');
+    if (!raw) { out.textContent = ''; $('#src-name').placeholder = 'يُستنتج من الرابط'; return; }
+
+    var host = CS.mySources.hostOf(raw);
+    if (!host) { out.textContent = '🔴 الرابط مو مفهوم'; return; }
+
+    $('#src-name').placeholder = CS.mySources.nameFromUrl(raw) || 'يُستنتج من الرابط';
+
+    /* نطاق معروف؟ نضبط نمطه تلقائيًا ونقول له */
+    var known = CS.mySources.knownFor(host);
+    if (known && !$('#src-pattern').dataset.touched) $('#src-pattern').value = 'custom';
+
+    var draft = {
+      type: $('#src-type').value,
+      url: CS.mySources.hasTokens(raw) ? raw : CS.mySources.originOf(raw),
+      origin: CS.mySources.originOf(raw),
+      pattern: $('#src-pattern').value,
+      tpl: known ? known.tpl : ($('#src-pattern').value === 'custom' ? $('#src-tpl').value.trim() : ''),
+      key: $('#src-key').value.trim()
+    };
+
+    var sample = sampleUrl(draft);
+    out.innerHTML = '🔎 رابط البحث اللي بيتولّد لفيلم Inception — ' +
+      '<a href="' + esc0(sample) + '" target="_blank" rel="noopener noreferrer">افتحه وشوفه بنفسك</a>:' +
+      '<br><code dir="ltr">' + esc0(sample) + '</code>' +
+      (known
+        ? '<br>🟢 نطاق معروف — ضبطت رابط بحثه الرسمي تلقائيًا.'
+        : '<br>🟡 لو ما طلعت نتائج، بدّل «نمط البحث» من الخيارات المتقدّمة — ' +
+          'المتصفح ما يخلّينا نكتشف نمط أي موقع تلقائيًا.');
+  }
+
   function addSource() {
     var url = $('#src-url').value.trim();
-    if (!url) { CS.ui.toast('🔴 اكتب رابط المصدر أولًا'); $('#src-url').focus(); return; }
+    var out = $('#out-src-add');
+    if (!url) { out.className = 'keyrow__out is-bad'; out.textContent = '🔴 الصق رابط الموقع أولًا'; $('#src-url').focus(); return; }
 
     try {
       var s = CS.mySources.add({
-        name: $('#src-name').value.trim(),
-        url:  url,
-        key:  $('#src-key').value.trim(),
-        type: $('#src-type').value
+        name:    $('#src-name').value.trim(),
+        url:     url,
+        key:     $('#src-key').value.trim(),
+        type:    $('#src-type').value,
+        pattern: $('#src-pattern').value,
+        tpl:     $('#src-tpl').value.trim()
       });
       $('#src-name').value = '';
       $('#src-url').value  = '';
       $('#src-key').value  = '';
+      $('#src-tpl').value  = '';
+      $('#src-preview').textContent = '';
+      $('#src-pattern').dataset.touched = '';
       renderSources();
-      CS.ui.toast('🟢 انضاف «' + s.name + '»');
+      out.className = 'keyrow__out is-ok';
+      out.textContent = '🟢 انضاف «' + s.name + '» — أفحصه الحين…';
       testSource(s.id);
     } catch (e) {
-      CS.ui.toast(String(e && e.message) === 'BAD_URL'
-        ? '🔴 الرابط لازم يبدأ بـ https://'
-        : '🔴 ما قدرت أضيفه');
+      out.className = 'keyrow__out is-bad';
+      out.textContent = String(e && e.message) === 'BAD_URL'
+        ? '🔴 الرابط مو صحيح — لازم يكون نطاقًا مثل example.com'
+        : '🔴 ما قدرت أضيفه';
     }
   }
 
   function testSource(id) {
-    var s = CS.mySources.all().filter(function (x) { return x.id === id; })[0];
+    var s = CS.mySources.byId(id);
     if (!s) return Promise.resolve();
 
     var row = $('[data-src-row="' + id + '"]');
@@ -1086,6 +1170,101 @@
       var bad = CS.mySources.all().filter(function (s) { return s.status && !s.status.ok; }).length;
       CS.ui.toast(bad ? '🟡 ' + bad + ' من المصادر ما نجحت' : '🟢 كل المصادر شغّالة');
       if (detailCtx) renderWatch();
+    });
+  }
+
+  /* ============================================================
+     مصادر البيانات — يضيفها المشغّل من الإعدادات
+     ============================================================ */
+
+  function fillPresets() {
+    var sel = $('#ds-preset');
+    if (sel.options.length) return;
+    sel.add(new Option('— مخصّص (ألصق رابطي) —', ''));
+    CS.dataSources.PRESETS.forEach(function (p) {
+      sel.add(new Option(p.name + ' — ' + p.hint, p.id));
+    });
+  }
+
+  function onPresetPick() {
+    var p = CS.dataSources.preset($('#ds-preset').value);
+    if (!p) { $('#ds-url').value = ''; $('#ds-name').placeholder = 'يُستنتج من الرابط'; $('#ds-key').placeholder = 'لو المزوّد يحتاج مفتاح'; return; }
+    $('#ds-url').value = p.url;
+    $('#ds-name').placeholder = p.name;
+    $('#ds-key').placeholder = p.needsKey ? (p.keyLabel || 'مفتاح API') : 'ما يحتاج مفتاح';
+  }
+
+  function renderDataSources() {
+    var list = CS.dataSources.all();
+    var box = $('#ds-list');
+    if (!box) return;
+
+    if (!list.length) {
+      box.innerHTML = '<div class="empty" style="padding:1.2rem">' +
+        '<b>⚪ ما فيه مصادر بيانات مضافة</b><p>اختر مزوّدًا من القائمة تحت أو الصق رابط API.</p></div>';
+      return;
+    }
+
+    box.innerHTML = list.map(function (d) {
+      return '<div class="srcitem' + (d.enabled ? '' : ' is-off') + '" data-ds-row="' + esc0(d.id) + '">' +
+        '<div class="srcitem__top">' +
+          '<b class="srcitem__name">' + esc0(d.name) + '</b>' +
+          '<span class="srcitem__type">' + esc0(d.key ? 'بمفتاح' : 'بدون مفتاح') + '</span>' +
+        '</div>' +
+        '<code class="srcitem__url" dir="ltr">' + esc0(hideKey(d)) + '</code>' +
+        statusLine(d) +
+        '<div class="srcitem__acts">' +
+          '<button class="btn btn--sm" data-ds-test="' + esc0(d.id) + '">تحقق</button>' +
+          '<button class="btn btn--sm btn--ghost" data-ds-toggle="' + esc0(d.id) + '">' +
+            (d.enabled ? 'إيقاف' : 'تشغيل') + '</button>' +
+          '<button class="btn btn--sm btn--ghost" data-ds-del="' + esc0(d.id) + '">حذف</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  /* ما نطبع المفتاح في الشاشة */
+  function hideKey(d) {
+    return String(d.url).replace(/\{key\}/g, d.key ? '••••' : '{key}');
+  }
+
+  function addDataSource() {
+    var out = $('#out-ds-add');
+    try {
+      var d = CS.dataSources.add({
+        preset: $('#ds-preset').value,
+        name:   $('#ds-name').value.trim(),
+        url:    $('#ds-url').value.trim(),
+        key:    $('#ds-key').value.trim()
+      });
+      $('#ds-name').value = '';
+      $('#ds-key').value = '';
+      $('#ds-preset').value = '';
+      $('#ds-url').value = '';
+      renderDataSources();
+      out.className = 'keyrow__out is-ok';
+      out.textContent = '🟢 انضاف «' + d.name + '» — أفحصه الحين…';
+      testDataSource(d.id);
+    } catch (e) {
+      out.className = 'keyrow__out is-bad';
+      var m = String(e && e.message);
+      out.textContent = m === 'NO_URL' ? '🔴 اختر مزوّدًا أو الصق رابط API'
+                      : m === 'BAD_URL' ? '🔴 الرابط لازم يبدأ بـ https://'
+                      : '🔴 ما قدرت أضيفه';
+    }
+  }
+
+  function testDataSource(id) {
+    var d = CS.dataSources.byId(id);
+    if (!d) return Promise.resolve();
+
+    var row = $('[data-ds-row="' + id + '"]');
+    var st  = row && row.querySelector('.srcitem__st');
+    if (st) { st.className = 'srcitem__st is-wait'; st.textContent = '⏳ أفحص…'; }
+
+    return CS.dataSources.test(d).then(function () {
+      renderDataSources();
+      if (detailCtx) renderExtraData();
     });
   }
 
@@ -1127,6 +1306,34 @@
         }
       });
     }
+  }
+
+  /* ------------------------------------------------------------
+     بيانات إضافية من مصادر المشغّل
+     ------------------------------------------------------------ */
+
+  function renderExtraData() {
+    var sec = $('#dt-datasources');
+    if (!sec || !detailCtx) return;
+
+    var list = CS.dataSources.all().filter(function (d) { return d.enabled; });
+    if (!list.length) { sec.innerHTML = ''; return; }
+
+    var item = detailCtx.d;
+    var token = detailCtx.token;
+    sec.innerHTML = CS.ui.dataSection(list.map(function (d) {
+      return { name: d.name, loading: true };
+    }));
+
+    CS.util.pool(list, 3, function (d) {
+      return CS.dataSources.fetchFor(d, item).then(function (r) {
+        return { name: d.name, ok: r.ok, rows: r.rows, detail: r.detail };
+      });
+    }).then(function (blocks) {
+      if (token !== detailToken) return;
+      var sec2 = $('#dt-datasources');
+      if (sec2) sec2.innerHTML = CS.ui.dataSection(blocks);
+    });
   }
 
 
@@ -1401,6 +1608,29 @@
         return;
       }
 
+      var dt2 = e.target.closest('[data-ds-test]');
+      if (dt2) { testDataSource(dt2.dataset.dsTest); return; }
+
+      var dg = e.target.closest('[data-ds-toggle]');
+      if (dg) {
+        var dcur = CS.dataSources.byId(dg.dataset.dsToggle);
+        if (dcur) CS.dataSources.update(dcur.id, { enabled: !dcur.enabled });
+        renderDataSources();
+        if (detailCtx) renderExtraData();
+        return;
+      }
+
+      var dd = e.target.closest('[data-ds-del]');
+      if (dd) {
+        var dgone = CS.dataSources.byId(dd.dataset.dsDel);
+        if (dgone && window.confirm('أحذف «' + dgone.name + '»؟')) {
+          CS.dataSources.remove(dgone.id);
+          renderDataSources();
+          if (detailCtx) renderExtraData();
+        }
+        return;
+      }
+
       var sd = e.target.closest('[data-src-del]');
       if (sd) {
         var gone = CS.mySources.all().filter(function (x) { return x.id === sd.dataset.srcDel; })[0];
@@ -1426,11 +1656,29 @@
     $('#btn-src-add').addEventListener('click', addSource);
     $('#btn-src-testall').addEventListener('click', testAllSources);
 
-    /* الاسم يُستنتج من الرابط لحظة الكتابة ما دامت خانة الاسم فاضية */
+    /* معاينة حيّة: الاسم والنمط ورابط البحث المتولّد */
     $('#src-url').addEventListener('input', function () {
-      var guess = CS.mySources.nameFromUrl(this.value.trim());
-      $('#src-name').placeholder = guess || 'يُستنتج من الرابط لو تركته فاضي';
+      var raw = this.value.trim();
+      /* الصق قالبًا فيه بدائل؟ ننقلك تلقائيًا للنوع المناسب */
+      if (CS.mySources.hasTokens(raw) && $('#src-type').value === 'site') {
+        $('#src-type').value = CS.mySources.guessType(raw);
+        $('#src-adv').open = true;
+      }
+      syncSrcForm();
+      previewSource();
     });
+
+    $('#src-pattern').addEventListener('change', function () {
+      this.dataset.touched = '1';
+      syncSrcForm();
+      previewSource();
+    });
+    $('#src-tpl').addEventListener('input', previewSource);
+    $('#src-type').addEventListener('change', function () { syncSrcForm(); previewSource(); });
+
+    /* مصادر البيانات */
+    $('#ds-preset').addEventListener('change', onPresetPick);
+    $('#btn-ds-add').addEventListener('click', addDataSource);
     $('#notice-open-settings').addEventListener('click', function () {
       openSettings();
       if ($('#key-notice').dataset.tmdbBroken) testConnection();
@@ -1496,7 +1744,7 @@
      حزام الأمان
      ============================================================ */
 
-  var REQUIRED = ['util', 'store', 'state', 'taste', 'certs', 'tmdb', 'wiki', 'sources', 'mySources', 'links', 'feed', 'search', 'ui'];
+  var REQUIRED = ['util', 'store', 'state', 'taste', 'certs', 'tmdb', 'wiki', 'sources', 'mySources', 'dataSources', 'links', 'feed', 'search', 'ui'];
 
   function fatal(title, detail, showReload) {
     var bar = document.getElementById('fatal');
@@ -1544,6 +1792,7 @@
       var moved = CS.taste.migrate();
       if (moved) setTimeout(function () { CS.ui.toast('👍 نقلت ' + moved + ' من مفضلتك القديمة'); }, 900);
     });
+    step(function () { fillPatterns(); fillPresets(); syncSrcForm(); });
     step(updateLikeCount);
     step(refreshKeyNotice);
     step(watchSentinels);
