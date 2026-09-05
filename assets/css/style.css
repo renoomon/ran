@@ -687,3 +687,5 @@ main{ max-width:1560px; margin-inline:auto; padding:clamp(1rem, 2.5vw, 1.8rem) c
 .ds__rows dd a{ color:var(--hot); }
 .ds__skip{ font-size:.76rem; color:var(--text-3); margin:.5rem 0 0; line-height:1.7; }
 .watch__video{ position:absolute; inset:0; width:100%; height:100%; background:#000; border:0; }
+.prov__credit{ font-size:.72rem; color:var(--text-3); margin:.5rem 0 0; }
+.prov__credit a{ color:var(--text-2); }

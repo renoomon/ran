@@ -141,12 +141,19 @@
       .filter(function (g) { return g[1] && g[1].length; });
     if (!groups.length) return '';
 
+    /* بيانات التوفّر من TMDB مصدرها JustWatch، وشروط TMDB تُلزم بنسبها
+       لـJustWatch مع كل عمل لا مرة واحدة في التذييل — وإلا يُسحب الوصول */
+    var credit = '<p class="prov__credit">مصدر بيانات التوفّر: ' +
+      '<a href="https://www.justwatch.com/" target="_blank" rel="noopener noreferrer">JustWatch</a>' +
+      (p.link ? ' · <a href="' + esc(p.link) + '" target="_blank" rel="noopener noreferrer">كل المنصّات</a>' : '') +
+      '</p>';
+
     return '<div class="prov">' + groups.map(function (g) {
       return '<div class="prov__g"><span class="prov__lbl">' + g[0] + '</span>' +
         g[1].map(function (x) {
           return '<img src="' + esc(x.logo) + '" alt="' + esc(x.name) + '" title="' + esc(x.name) + '" loading="lazy">';
         }).join('') + '</div>';
-    }).join('') + '</div>';
+    }).join('') + credit + '</div>';
   }
 
   function metaRow(label, value) {
