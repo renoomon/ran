@@ -163,26 +163,109 @@
 
   /* ---------- 4) الترجمة المجانية (عربي ⇄ إنجليزي) ---------- */
 
-  var trCache = {};
+  var CHUNK = 440;        // أقصى طول للمقطع الواحد عند MyMemory
+  var MAX_CACHE = 240;    // كم ترجمة نخزّن قبل ما نبدأ نرمي الأقدم
+  var memTr = {};
 
+  function hash(str) {
+    var h = 5381, i = str.length;
+    while (i) h = (h * 33) ^ str.charCodeAt(--i);
+    return (h >>> 0).toString(36);
+  }
+
+  function diskCache() {
+    var c = CS.store.get(CS.KEYS.trCache, {});
+    return (c && typeof c === 'object') ? c : {};
+  }
+
+  function cachePut(key, value) {
+    var c = diskCache();
+    var keys = Object.keys(c);
+    if (keys.length >= MAX_CACHE) keys.slice(0, keys.length - MAX_CACHE + 1).forEach(function (k) { delete c[k]; });
+    c[key] = value;
+    CS.store.set(CS.KEYS.trCache, c);
+  }
+
+  /* ترجمة مقطع واحد قصير */
   function translate(text, from, to) {
-    var key = from + '>' + to + ':' + text;
-    if (trCache[key]) return Promise.resolve(trCache[key]);
-    if (!text || text.length > 480) return Promise.resolve('');
+    text = String(text || '').trim();
+    if (!text || text.length > 500) return Promise.resolve('');
+
+    var key = from + '>' + to + ':' + hash(text);
+    if (memTr[key]) return Promise.resolve(memTr[key]);
 
     var url = 'https://api.mymemory.translated.net/get?q=' +
       encodeURIComponent(text) + '&langpair=' + from + '|' + to;
+
+    /* البريد اختياري — يرفع الحد اليومي من ٥ آلاف إلى ٥٠ ألف حرف */
+    var email = CS.store.get(CS.KEYS.email, '');
+    if (email) url += '&de=' + encodeURIComponent(email);
 
     return fetch(url)
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (json) {
         var out = ((json || {}).responseData || {}).translatedText || '';
         /* الخدمة ترجّع رسائل الحصة كنص عادي — نتجاهلها */
-        if (!out || /MYMEMORY WARNING|QUERY LENGTH LIMIT|INVALID/i.test(out)) return '';
-        trCache[key] = out;
+        if (!out || /MYMEMORY WARNING|QUERY LENGTH LIMIT|INVALID|DAILY LIMIT/i.test(out)) return '';
+        memTr[key] = out;
         return out;
       })
       .catch(function () { return ''; });
+  }
+
+  /* تقسيم النص لجُمل بدون lookbehind (توافق أوسع للمتصفحات) */
+  function sentences(text) {
+    var raw = String(text).split(/([.!?؟…]+["'”»)\]]*\s+)/);
+    var out = [], cur = '';
+    for (var i = 0; i < raw.length; i++) {
+      cur += raw[i];
+      if (i % 2 === 1) { out.push(cur); cur = ''; }
+    }
+    if (cur.trim()) out.push(cur);
+    return out.filter(function (s) { return s.trim(); });
+  }
+
+  function pack(parts, max) {
+    var out = [], buf = '';
+    parts.forEach(function (s) {
+      while (s.length > max) {           // جملة وحدة أطول من الحد
+        if (buf) { out.push(buf); buf = ''; }
+        out.push(s.slice(0, max));
+        s = s.slice(max);
+      }
+      if ((buf + s).length > max) { if (buf) out.push(buf); buf = s; }
+      else buf += s;
+    });
+    if (buf.trim()) out.push(buf);
+    return out;
+  }
+
+  /**
+   * ترجمة نص طويل: تقسيم لمقاطع + تنفيذ بالتسلسل + تخزين في المتصفح.
+   * ترجع '' لو فشلت كليًا (حصة يومية، انقطاع، ...).
+   */
+  function translateLong(text, from, to, cap) {
+    text = String(text || '').trim();
+    if (!text) return Promise.resolve('');
+    if (cap && text.length > cap) text = text.slice(0, cap);
+
+    var key = from + '>' + to + ':L' + hash(text);
+    var disk = diskCache();
+    if (disk[key]) return Promise.resolve(disk[key]);
+
+    var parts = pack(sentences(text), CHUNK);
+    var done = [];
+
+    return parts.reduce(function (chain, part) {
+      return chain.then(function () {
+        return translate(part, from, to).then(function (t) { done.push(t || ''); });
+      });
+    }, Promise.resolve()).then(function () {
+      if (!done.filter(Boolean).length) return '';
+      var joined = done.join(' ').replace(/[ \t]+/g, ' ').trim();
+      cachePut(key, joined);
+      return joined;
+    });
   }
 
   /* يرجّع النسخة الإنجليزية من الاستعلام (أو نفسه لو كان إنجليزي) */
@@ -191,11 +274,19 @@
     return translate(query, 'ar', 'en').then(function (en) { return en || ''; });
   }
 
+  /* يرجّع النسخة العربية من نص إنجليزي */
+  function toArabic(text, cap) {
+    if (!text || CS.util.isArabic(text)) return Promise.resolve('');
+    return translateLong(text, 'en', 'ar', cap || 3000);
+  }
+
   CS.wiki = {
     findWorks: findWorks,
     fullPlot: fullPlot,
     translate: translate,
-    toEnglish: toEnglish
+    translateLong: translateLong,
+    toEnglish: toEnglish,
+    toArabic: toArabic
   };
 
 })(window.CS);

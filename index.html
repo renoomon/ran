@@ -188,12 +188,23 @@
 
     <div class="modal__body">
       <label class="field">
-        <span class="field__label">مفتاح TMDB API <em>(مجاني)</em></span>
-        <input type="password" id="api-key" placeholder="الصق المفتاح هنا…" autocomplete="off" spellcheck="false">
+        <span class="field__label">مفتاح TMDB خاص فيك <em>(اختياري)</em></span>
+        <input type="password" id="api-key" placeholder="الموقع فيه مفتاح مشترك جاهز — اتركه فاضي" autocomplete="off" spellcheck="false">
         <small class="field__hint">
+          الموقع شغّال أصلًا بمفتاح مشترك مدمج، ما تحتاج تسوي شي.
+          لو تبي مفتاحك الخاص (حصة أعلى ومستقلة):
           سجّل في <a href="https://www.themoviedb.org/signup" target="_blank" rel="noopener">themoviedb.org</a> ثم
           <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">اطلب مفتاح API</a> —
-          يقبل مفتاح <b>v3</b> أو توكن <b>v4 Bearer</b>. يُحفظ في متصفحك فقط ولا يُرسل لأي جهة غير TMDB.
+          يقبل <b>v3</b> أو توكن <b>v4 Bearer</b>. يُحفظ في متصفحك فقط.
+        </small>
+      </label>
+
+      <label class="field">
+        <span class="field__label">بريدك لرفع حد الترجمة <em>(اختياري)</em></span>
+        <input type="email" id="tr-email" placeholder="name@example.com" autocomplete="off" spellcheck="false">
+        <small class="field__hint">
+          ترجمة الملخصات تمر على <a href="https://mymemory.translated.net/" target="_blank" rel="noopener">MyMemory</a> المجانية:
+          ٥٠٠٠ حرف يوميًا بدون بريد، و٥٠ ألف مع بريد. يُحفظ في متصفحك ويُرسل لـ MyMemory فقط مع طلبات الترجمة.
         </small>
       </label>
 
@@ -227,7 +238,7 @@
     </div>
 
     <footer class="modal__foot">
-      <button class="btn btn--ghost" id="btn-clear-key">حذف المفتاح</button>
+      <button class="btn btn--ghost" id="btn-clear-key">حذف مفتاحي الخاص</button>
       <button class="btn" id="btn-save-settings">حفظ وتجربة</button>
     </footer>
   </div>

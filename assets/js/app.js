@@ -247,22 +247,41 @@
     CS.tmdb.details(type, id).then(function (d) {
       if (token !== detailToken) return;
 
-      var jobs = [];
-      /* وصف بديل بالإنجليزي لو العربي فاضي */
-      jobs.push(!d.overview ? CS.tmdb.overviewFallback(type, id) : Promise.resolve(''));
+      /* الملخص القصير: عربي رسمي من TMDB أولًا */
+      var extra = {};
+      var arabic = d.overview && CS.util.isArabic(d.overview) ? d.overview : d.arOverview;
 
-      return Promise.all(jobs).then(function (r) {
-        if (token !== detailToken) return;
-        var extra = { overviewEn: r[0] };
-        panel.innerHTML = CS.ui.detail(d, extra);
-        remember([d]);
-        remember(d.similar);
-        remember(d.recommendations);
-        panel.scrollTop = 0;
+      if (CS.state.lang !== 'ar') {
+        extra.summary = d.overview || d.enOverview || '';
+        extra.summarySource = 'الملخص من TMDB';
+      } else if (arabic) {
+        extra.summary = arabic;
+        extra.summarySource = 'الملخص من TMDB (عربي)';
+      } else {
+        extra.summary = d.enOverview || d.overview || '';
+        extra.summarySource = 'الملخص من TMDB (إنجليزي)';
+      }
 
-        /* القصة الكاملة من ويكيبيديا — تُضاف بعدين بدون ما تعطّل العرض */
-        attachWikiPlot(d, extra, token);
-      });
+      panel.innerHTML = CS.ui.detail(d, extra);
+      remember([d]);
+      remember(d.similar);
+      remember(d.recommendations);
+      panel.scrollTop = 0;
+
+      detailCtx = { d: d, extra: extra, token: token };
+
+      /* ما فيه ملخص عربي رسمي؟ نترجم الإنجليزي آليًا بالخلفية */
+      if (CS.state.lang === 'ar' && !arabic && extra.summary) {
+        CS.wiki.toArabic(extra.summary, 1200).then(function (ar) {
+          if (!ar || token !== detailToken) return;
+          extra.summary = ar;
+          extra.summarySource = 'الملخص من TMDB (ترجمة آلية)';
+          repaintStory();
+        });
+      }
+
+      /* القصة الكاملة من ويكيبيديا — تُضاف بعدين بدون ما تعطّل العرض */
+      attachWikiPlot(d, extra, token);
     }).catch(function (err) {
       if (token !== detailToken) return;
       panel.innerHTML = '<div class="dt__body"><div class="empty"><b>🔴 ما قدرت أفتح التفاصيل</b><p>' +
@@ -270,32 +289,74 @@
     });
   }
 
-  function attachWikiPlot(d, extra, token) {
-    var probe = (d.originalTitle || d.title) + (d.year ? ' ' + d.year : '');
-    var lang = CS.util.isArabic(d.title) ? 'ar' : 'en';
+  /* آخر عمل معروض — عشان زر الترجمة اليدوي يعرف على إيش يشتغل */
+  var detailCtx = null;
 
-    var known = d.wikiTitle
-      ? Promise.resolve({ wikiLang: d.wikiLang || lang, wikiTitle: d.wikiTitle })
-      : CS.wiki.findWorks(lang, probe, 4).then(function (works) {
+  function repaintStory() {
+    var sec = $('#dt-story');
+    if (sec && detailCtx) sec.innerHTML = CS.ui.storySection(detailCtx.d, detailCtx.extra);
+  }
+
+  /* يدوّر المقالة في ويكيبيديا العربية أول، وإذا ما لقى يجرّب الإنجليزية */
+  function findArticle(d) {
+    if (d.wikiTitle) {
+      return Promise.resolve({ wikiLang: d.wikiLang || 'ar', wikiTitle: d.wikiTitle, wikiUrl: d.wikiUrl });
+    }
+
+    var names = [d.title, d.originalTitle, d.arTitle].filter(Boolean);
+    var attempts = [
+      { lang: 'ar', probe: (d.arTitle || d.title) + (d.year ? ' ' + d.year : '') },
+      { lang: 'en', probe: (d.originalTitle || d.title) + (d.year ? ' ' + d.year : '') }
+    ];
+
+    return attempts.reduce(function (chain, a) {
+      return chain.then(function (found) {
+        if (found) return found;
+        return CS.wiki.findWorks(a.lang, a.probe, 4).then(function (works) {
           var hit = works.filter(function (w) {
-            return CS.search.similarity(w.cleanTitle, d.originalTitle || d.title) > .6 &&
-                   (!w.year || !d.year || Math.abs(w.year - d.year) <= 1);
+            var sim = Math.max.apply(null, names.map(function (n) {
+              return CS.search.similarity(w.cleanTitle, n);
+            }));
+            return sim > .6 && (!w.year || !d.year || Math.abs(w.year - d.year) <= 1);
           })[0];
           return hit ? { wikiLang: hit.wikiLang, wikiTitle: hit.wikiTitle, wikiUrl: hit.wikiUrl } : null;
-        });
+        }).catch(function () { return null; });
+      });
+    }, Promise.resolve(null));
+  }
 
-    known.then(function (w) {
+  function attachWikiPlot(d, extra, token) {
+    findArticle(d).then(function (w) {
       if (!w || token !== detailToken) return;
       return CS.wiki.fullPlot(w.wikiLang, w.wikiTitle).then(function (plot) {
         if (!plot || token !== detailToken) return;
         d.wikiUrl = d.wikiUrl || w.wikiUrl;
+        d.wikiTitle = w.wikiTitle;
+        d.wikiLang = w.wikiLang;
         extra.fullPlot = plot;
-
-        /* نحدّث قسم القصة لحاله عشان ما يعيد تحميل التريلر */
-        var sec = $('#dt-story');
-        if (sec) sec.innerHTML = CS.ui.storySection(d, extra);
+        extra.plotLang = w.wikiLang;
+        repaintStory();   /* نحدّث القسم لحاله عشان ما يعيد تحميل التريلر */
       });
     }).catch(function () { /* القصة الكاملة اختيارية */ });
+  }
+
+  /* ترجمة القصة الطويلة عند الطلب — تستهلك حصة MyMemory اليومية */
+  function translatePlot(btn) {
+    if (!detailCtx || !detailCtx.extra.fullPlot) return;
+    var ctx = detailCtx;
+    btn.disabled = true;
+    btn.textContent = '⏳ يترجم…';
+
+    CS.wiki.toArabic(ctx.extra.fullPlot, 3000).then(function (ar) {
+      if (ctx.token !== detailToken) return;
+      if (ar) {
+        ctx.extra.plotArabic = ar;
+        ctx.extra.plotError = '';
+      } else {
+        ctx.extra.plotError = 'ما قدرت أترجم — غالبًا انتهت الحصة اليومية المجانية للترجمة. جرّب بكرة، أو حط بريدك في الإعدادات عشان يرتفع الحد.';
+      }
+      repaintStory();
+    });
   }
 
   function openWikiDetail(lang, title) {
@@ -314,8 +375,15 @@
         wikiLang: lang, wikiTitle: title,
         wikiUrl: 'https://' + lang + '.wikipedia.org/wiki/' + encodeURIComponent(title)
       };
-      panel.innerHTML = CS.ui.detail(d, { fullPlot: plot });
+      var extra = {
+        summary: d.overview || '',
+        summarySource: 'الملخص من ويكيبيديا',
+        fullPlot: plot,
+        plotLang: lang
+      };
+      panel.innerHTML = CS.ui.detail(d, extra);
       panel.scrollTop = 0;
+      detailCtx = { d: d, extra: extra, token: token };
     }).catch(function () {
       if (token !== detailToken) return;
       panel.innerHTML = '<div class="dt__body"><div class="empty">🔴 ما قدرت أجيب المقالة من ويكيبيديا.</div></div>';
@@ -327,7 +395,8 @@
      ============================================================ */
 
   function openSettings() {
-    $('#api-key').value = CS.state.apiKey || '';
+    $('#api-key').value = CS.state.userKey || '';
+    $('#tr-email').value = CS.store.get(CS.KEYS.email, '') || '';
     $('#set-lang').value = CS.state.lang;
     $('#set-region').value = CS.state.region;
     $('#key-state').className = 'keystate';
@@ -341,8 +410,20 @@
     if ($('#detail').hidden) document.body.classList.remove('is-locked');
   }
 
+  /* يقفل النافذة ويعيد بناء الشاشة الحالية بعد أي حفظ ناجح */
+  function finishSave() {
+    setTimeout(function () {
+      closeSettings();
+      CS.ui.toast('🟢 تم الحفظ');
+      if (CS.state.view === 'results' && CS.state.query) doSearch(CS.state.query, CS.state.mode, true);
+      else if (CS.state.view === 'fav') renderFav();
+      else renderHome();
+    }, 700);
+  }
+
   function saveSettings() {
     var key = $('#api-key').value.trim();
+    var email = $('#tr-email').value.trim();
     var lang = $('#set-lang').value;
     var region = $('#set-region').value;
     var state = $('#key-state');
@@ -351,13 +432,18 @@
     CS.state.region = CS.store.set(CS.KEYS.region, region);
     $('#lang-label').textContent = lang === 'ar' ? 'ع' : 'EN';
 
+    if (email) CS.store.set(CS.KEYS.email, email);
+    else CS.store.remove(CS.KEYS.email);
+
+    /* بدون مفتاح خاص نرجع للمفتاح المشترك المثبّت في الموقع */
     if (!key) {
-      CS.state.apiKey = '';
+      CS.state.userKey = '';
+      CS.state.apiKey = CS.config.sharedKey;
       CS.store.remove(CS.KEYS.apiKey);
-      state.className = 'keystate is-bad';
-      state.textContent = '🟡 حفظت الإعدادات بدون مفتاح — الموقع بيشتغل بوضع ويكيبيديا فقط.';
+      state.className = 'keystate is-ok';
+      state.textContent = '🟢 محفوظ. الموقع يستخدم المفتاح المشترك المدمج.';
       refreshKeyNotice();
-      renderHome();
+      CS.tmdb.loadGenres().then(finishSave);
       return;
     }
 
@@ -365,19 +451,13 @@
     state.textContent = '⏳ أختبر المفتاح…';
 
     CS.tmdb.testKey(key).then(function () {
-      CS.state.apiKey = CS.store.set(CS.KEYS.apiKey, key);
+      CS.state.userKey = CS.store.set(CS.KEYS.apiKey, key);
+      CS.state.apiKey = key;
       state.className = 'keystate is-ok';
-      state.textContent = '🟢 المفتاح شغّال. كل المزايا مفتوحة الحين.';
+      state.textContent = '🟢 مفتاحك الخاص شغّال ومفعّل.';
       refreshKeyNotice();
       return CS.tmdb.loadGenres();
-    }).then(function () {
-      setTimeout(function () {
-        closeSettings();
-        CS.ui.toast('🟢 تم الحفظ');
-        if (CS.state.query) doSearch(CS.state.query, CS.state.mode, true);
-        else renderHome();
-      }, 700);
-    }).catch(function (err) {
+    }).then(finishSave).catch(function (err) {
       state.className = 'keystate is-bad';
       state.textContent = err && err.message === 'BAD_KEY'
         ? '🔴 المفتاح مرفوض من TMDB. تأكد إنك ناسخ مفتاح v3 أو توكن v4 كامل.'
@@ -610,6 +690,9 @@
         return;
       }
 
+      var trBtn = e.target.closest('[data-translate-plot]');
+      if (trBtn) { translatePlot(trBtn); return; }
+
       if (e.target.closest('[data-close-detail]')) { closeSheet(); return; }
       if (e.target.closest('[data-close-settings]')) { closeSettings(); return; }
       if (e.target.closest('[data-route-home]')) { location.hash = '#/'; return; }
@@ -645,11 +728,12 @@
     $('#btn-save-settings').addEventListener('click', saveSettings);
     $('#btn-clear-key').addEventListener('click', function () {
       $('#api-key').value = '';
-      CS.state.apiKey = '';
+      CS.state.userKey = '';
+      CS.state.apiKey = CS.config.sharedKey;
       CS.store.remove(CS.KEYS.apiKey);
       refreshKeyNotice();
-      $('#key-state').className = 'keystate is-bad';
-      $('#key-state').textContent = '🟡 انحذف المفتاح. الموقع بوضع ويكيبيديا فقط.';
+      $('#key-state').className = 'keystate is-ok';
+      $('#key-state').textContent = '🟢 انحذف مفتاحك الخاص. رجعنا للمفتاح المشترك.';
     });
 
     /* --- الاختصارات --- */

@@ -168,8 +168,8 @@
 
   function details(type, id) {
     var appends = type === 'movie'
-      ? 'videos,credits,external_ids,similar,recommendations,keywords,release_dates,watch/providers'
-      : 'videos,aggregate_credits,external_ids,similar,recommendations,keywords,content_ratings,watch/providers';
+      ? 'videos,credits,external_ids,similar,recommendations,keywords,translations,release_dates,watch/providers'
+      : 'videos,aggregate_credits,external_ids,similar,recommendations,keywords,translations,content_ratings,watch/providers';
 
     return req('/' + type + '/' + id, { append_to_response: appends })
       .then(function (raw) {
@@ -225,6 +225,26 @@
           buy: (region.buy || []).map(provider)
         };
 
+        /* الترجمات الرسمية: نفضّل ملخّص TMDB العربي على أي ترجمة آلية */
+        var trs = ((raw.translations || {}).translations) || [];
+        function pick(iso, preferRegions) {
+          var list = trs.filter(function (t) {
+            return t.iso_639_1 === iso && ((t.data || {}).overview || '').trim();
+          });
+          for (var i = 0; i < preferRegions.length; i++) {
+            var hit = list.filter(function (t) { return t.iso_3166_1 === preferRegions[i]; })[0];
+            if (hit) return hit.data;
+          }
+          return list.length ? list[0].data : null;
+        }
+
+        var arData = pick('ar', ['SA', 'AE', 'EG']);
+        var enData = pick('en', ['US', 'GB']);
+
+        base.arOverview = (arData || {}).overview || '';
+        base.arTitle    = (arData || {}).title || (arData || {}).name || '';
+        base.enOverview = (enData || {}).overview || '';
+
         base.keywords = ((raw.keywords || {}).keywords || (raw.keywords || {}).results || [])
           .map(function (k) { return { id: k.id, name: k.name }; });
 
@@ -237,13 +257,6 @@
 
   function provider(p) {
     return { name: p.provider_name, logo: img(p.logo_path, CFG.logo) };
-  }
-
-  /* الوصف بلغة ثانية لو كان فاضي بالعربي */
-  function overviewFallback(type, id) {
-    return req('/' + type + '/' + id, { language: 'en-US' })
-      .then(function (raw) { return raw.overview || ''; })
-      .catch(function () { return ''; });
   }
 
   /* ---------- صفحات الاستكشاف ---------- */
@@ -294,7 +307,6 @@
     searchKeywords: searchKeywords,
     discoverByKeywords: discoverByKeywords,
     details: details,
-    overviewFallback: overviewFallback,
     trending: trending,
     topRated: topRated,
     nowPlaying: nowPlaying,

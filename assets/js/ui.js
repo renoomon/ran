@@ -175,23 +175,41 @@
   /* قسم القصة — منفصل عشان نقدر نحدّثه لحاله لما توصل قصة ويكيبيديا */
   function storySection(d, extra) {
     extra = extra || {};
-    var short = d.overview || extra.overviewEn || '';
-    var story = short;
 
-    if (extra.fullPlot) {
+    /* الملخص القصير: عربي رسمي ← ترجمة آلية ← إنجليزي */
+    var short = extra.summary || '';
+    var plot  = extra.plotArabic || extra.fullPlot || '';
+
+    var story = short;
+    if (plot) {
       var head = CS.search.norm(short).slice(0, 60);
-      if (!story) story = extra.fullPlot;
-      else if (!head || CS.search.norm(extra.fullPlot).indexOf(head) === -1) story += '\n\n' + extra.fullPlot;
+      if (!story) story = plot;
+      else if (!head || CS.search.norm(plot).indexOf(head) === -1) story += '\n\n' + plot;
     }
 
     var html = story
       ? '<p class="overview">' + esc(story) + '</p>'
-      : '<p class="overview overview--empty">ما فيه ملخص متوفر لهالعمل بالعربي. جرّب بدّل لغة المحتوى للإنجليزية من الإعدادات، أو افتح روابط المواقع تحت.</p>';
+      : '<p class="overview overview--empty">ما لقيت ملخصًا لهالعمل — لا في TMDB ولا في ويكيبيديا. افتح روابط المواقع تحت.</p>';
 
+    /* نحكم على لغة القصة من نصها نفسه، لا من ويكي أي لغة جبناها —
+       فيه مقالات عربية مقاطعها إنجليزية والعكس */
+    var plotIsArabic = extra.fullPlot ? CS.util.isArabic(extra.fullPlot) : false;
+
+    /* مصدر كل جزء بالوضوح */
     var src = [];
-    if (short) src.push('الملخص من TMDB');
-    if (extra.fullPlot) src.push('تفاصيل القصة من ويكيبيديا');
+    if (short) src.push(extra.summarySource || 'الملخص من TMDB');
+    if (extra.plotArabic) src.push('القصة من ويكيبيديا (ترجمة آلية)');
+    else if (extra.fullPlot) src.push('القصة من ويكيبيديا (' + (plotIsArabic ? 'عربي' : 'إنجليزي') + ')');
     if (src.length) html += '<p class="overview__src">🔸 ' + src.join(' · ') + '</p>';
+
+    /* قصة ويكيبيديا بالإنجليزي والواجهة عربية ← نعرض زر ترجمة يدوي */
+    if (extra.fullPlot && !extra.plotArabic && !plotIsArabic && CS.state.lang === 'ar') {
+      html += '<div class="dt__actions"><button class="btn btn--ghost btn--sm" data-translate-plot>' +
+              '🔤 ترجم القصة الكاملة للعربية</button></div>';
+    }
+    if (extra.plotError) {
+      html += '<p class="overview__src">🔴 ' + esc(extra.plotError) + '</p>';
+    }
 
     return '<h3 class="sec__title">القصة الكاملة</h3>' + html;
   }

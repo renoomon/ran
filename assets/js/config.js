@@ -27,7 +27,11 @@ window.CS = window.CS || {};
       suggest: 7,
       history: 12
     },
-    defaults: { lang: 'ar', region: 'SA', mode: 'auto' }
+    defaults: { lang: 'ar', region: 'SA', mode: 'auto' },
+
+    /* مفتاح TMDB مشترك مثبّت في الموقع عشان يشتغل لكل زائر بدون تسجيل.
+       الزائر يقدر يحط مفتاحه الخاص من الإعدادات ويتجاوز هذا. */
+    sharedKey: '8ad8b250b2860ecbd1f5fe336165322f'
   };
 
   /* ---------- مفاتيح التخزين ---------- */
@@ -39,7 +43,9 @@ window.CS = window.CS || {};
     mode:      'cs.mode',
     favorites: 'cs.favorites',
     history:   'cs.history',
-    noticeOff: 'cs.notice_off'
+    noticeOff: 'cs.notice_off',
+    email:     'cs.tr_email',
+    trCache:   'cs.tr_cache'
   };
 
   /* ---------- التخزين المحلي (آمن ضد الأوضاع الخاصة) ---------- */
@@ -69,8 +75,11 @@ window.CS = window.CS || {};
 
   /* ---------- حالة التطبيق ---------- */
 
+  var userKey = CS.store.get(CS.KEYS.apiKey, '') || '';
+
   CS.state = {
-    apiKey:  CS.store.get(CS.KEYS.apiKey, '') || '',
+    userKey: userKey,                                   // مفتاح الزائر لو حطّه
+    apiKey:  userKey || CS.config.sharedKey,            // المستخدم فعليًا
     lang:    CS.store.get(CS.KEYS.lang, CS.config.defaults.lang),
     region:  CS.store.get(CS.KEYS.region, CS.config.defaults.region),
     mode:    CS.store.get(CS.KEYS.mode, CS.config.defaults.mode),
