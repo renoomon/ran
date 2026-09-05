@@ -274,9 +274,6 @@
             '<b>' + esc(c.name) + '</b>' + (c.role ? '<span>' + esc(c.role) + '</span>' : '') + '</a>';
         }).join('') + '</div>' : '';
 
-    var trailerHtml = d.trailer
-      ? '<div class="trailer"><iframe src="https://www.youtube-nocookie.com/embed/' + esc(d.trailer.key) +
-        '" title="تريلر ' + esc(d.title) + '" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe></div>' : '';
 
     var provHtml = providersHtml(d.providers);
 
@@ -314,10 +311,6 @@
         '<section id="dt-story">' + storySection(d, extra) + '</section>' +
         heatHtml +
         (provHtml ? '<section><h3 class="sec__title">وين تشوفه <span class="sec__note">(' + esc(CS.state.region) + ')</span></h3>' + provHtml + '</section>' : '') +
-        '<section id="dt-watch"></section>' +
-        /* المشاهدة تحلّ محلّ التريلر: التريلر ما يظهر إلا لو ما فيه ولا مصدر مضاف */
-        (trailerHtml && !hasWatchSources()
-          ? '<section><h3 class="sec__title">التريلر</h3>' + trailerHtml + '</section>' : '') +
         '<section id="dt-datasources"></section>' +
         '<section id="dt-links">' + linksHtml(d) + '</section>' +
         (castHtml ? '<section><h3 class="sec__title">طاقم العمل <span class="sec__note">اضغط أي اسم لأعماله</span></h3>' + castHtml + '</section>' : '') +
@@ -382,99 +375,6 @@
   }
 
   /* قسم المشاهدة من مصادر المشغّل */
-  function hasWatchSources() {
-    return !!(CS.mySources && CS.mySources.all().filter(function (s) { return s.enabled; }).length);
-  }
-
-  function watchSection(item, sources, activeId, resolved) {
-    if (!sources.length) {
-      return '<h3 class="sec__title">المشاهدة</h3>' +
-        '<div class="empty" style="padding:1.6rem"><b>🎬 ما فيه مصادر مضافة</b>' +
-        '<p>افتح 🎬 <b>إعدادات المصادر</b> من الأعلى والصق رابط موقعك — الرابط فقط، ' +
-        'والموقع يبحث فيه عن كل عمل بنفسه.</p></div>';
-    }
-
-    var active = sources.filter(function (s) { return s.id === activeId; })[0] || sources[0];
-    var missing = CS.mySources.missingFor(active, item);
-    var url = CS.mySources.urlFor(active, item);
-
-    var bar = '<div class="watch__bar">' + sources.map(function (s) {
-      var ok = s.status && s.status.ok;
-      var tip = s.status && s.status.ok === false ? ' title="آخر تحقق: فشل"'
-              : s.status && s.status.ok === null ? ' title="ما قدرت أتحقق منه من المتصفح"' : '';
-      var dot = !s.status ? '' : ok === true ? '🟢 ' : ok === false ? '🔴 ' : '🟡 ';
-      return '<button class="watch__pick' + (s.id === active.id ? ' is-on' : '') +
-        '" data-watch-src="' + esc(s.id) + '"' + tip + '>' + dot + esc(s.name) + '</button>';
-    }).join('') + '</div>';
-
-    var body;
-
-    if (missing.length) {
-      body = '<div class="empty" style="padding:1.4rem">🟡 هذا المصدر يحتاج ' +
-        esc(missing.join(' و')) + '، وما هو متوفر لهذا العمل.</div>';
-
-    } else if (active.type === 'site') {
-      /* موقع كامل: نعرض نتيجة بحثه داخل الصفحة، والزر دائمًا موجود.
-         وما نطلب من المستخدم يعرف «نمط البحث» — نعطيه كل الاحتمالات أزرارًا،
-         يضغط لين تظهر النتائج، واختياره ينحفظ فما يعيدها مرة ثانية. */
-      var term = CS.mySources.searchTerm(item);
-      var opts = CS.mySources.optionsFor(active, item);
-      var cur = active.pattern || (active.tpl ? 'custom' : 's');
-
-      /* المستخدم ما يحتاج يعرف «?s=» ولا «MacCMS» — أرقام وأسماء محركات،
-         والتفصيل التقني يظهر لو وقف على الزر */
-      var n = 0;
-      var tries = '<div class="tryrow"><span class="tryrow__lbl">ما ظهرت النتائج؟ اضغط:</span>' +
-        opts.map(function (o) {
-          var label = o.engine ? o.label : 'طريقة ' + (++n);
-          return '<button class="tryrow__b' + (o.id === cur ? ' is-on' : '') +
-            (o.engine ? ' is-eng' : '') + '" data-watch-pattern="' + esc(o.id) +
-            '" title="' + esc(o.label) + ' — ' + esc(o.url) + '">' + esc(label) + '</button>';
-        }).join('') + '</div>';
-
-      /* الأزرار فوق الإطار: هي اللي يحتاجها لو ما ظهرت النتائج،
-         وتحت إطار بطول ١٦:٩ كانت تنزل تحت حدود الشاشة فما يشوفها */
-      body =
-        '<div class="watch__bar"><a class="btn" target="_blank" rel="noopener noreferrer" href="' +
-          esc(url) + '">↗ افتحه في تبويب جديد</a></div>' +
-        tries +
-        '<div class="watch__note">🟢 الأزرار المنقّطة (جوجل · بينج · دك دك جو · ياندكس) تشتغل مع ' +
-        'أي موقع مهما كان — تبحث داخل ' + esc(active.name) + ' نفسه عن «' + esc(term) + '».</div>' +
-        '<div class="watch__frame is-page"><iframe src="' + esc(url) +
-        '" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture; fullscreen" ' +
-        'referrerpolicy="strict-origin-when-cross-origin" loading="lazy" ' +
-        'title="بحث ' + esc(term) + ' في ' + esc(active.name) + '"></iframe></div>';
-
-    } else if (active.type === 'video') {
-      /* ملف مباشر: <video> يشغّله بلا CORS. HLS يُحمَّل له مشغّل وقت التشغيل. */
-      body = '<div class="watch__frame"><video class="watch__video" controls playsinline preload="metadata" ' +
-        'data-media-src="' + esc(url) + '"' + (item.backdrop ? ' poster="' + esc(item.backdrop) + '"' : '') +
-        '></video></div>' +
-        (CS.mySources.isHls(url)
-          ? '<div class="watch__note">📺 بث HLS — يحتاج سيرفرك يرسل ترويسات CORS عشان يشتغل خارج سفاري.</div>'
-          : '');
-
-    } else if (active.type === 'embed') {
-      body = '<div class="watch__frame"><iframe src="' + esc(url) +
-        '" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture; clipboard-write" ' +
-        'referrerpolicy="strict-origin-when-cross-origin" loading="lazy" ' +
-        'title="مشاهدة ' + esc(item.title) + '"></iframe></div>';
-
-    } else if (active.type === 'link') {
-      body = '<div class="watch__bar"><a class="btn" target="_blank" rel="noopener noreferrer" href="' +
-        esc(url) + '">▶️ افتح المشاهدة في ' + esc(active.name) + '</a></div>';
-
-    } else {
-      body = resolved
-        ? '<div class="watch__frame"><iframe src="' + esc(resolved) +
-          '" allowfullscreen allow="autoplay; encrypted-media" title="مشاهدة"></iframe></div>'
-        : '<div class="empty" style="padding:1.4rem">⏳ أطلب رابط التشغيل من ' + esc(active.name) + '…</div>';
-    }
-
-    return '<h3 class="sec__title">المشاهدة <span class="sec__note">من مصادرك</span></h3>' +
-      '<div class="watch">' + bar + body + '</div>';
-  }
-
   /* بيانات إضافية جاءت من مصادر البيانات اللي أضافها المشغّل */
   function dataSection(blocks) {
     if (!blocks || !blocks.length) return '';
@@ -510,7 +410,6 @@
   }
 
   CS.ui = {
-    watchSection: watchSection,
     dataSection: dataSection,
     toast: toast,
     skeletons: skeletons,

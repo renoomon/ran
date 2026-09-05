@@ -129,11 +129,7 @@
       'https://yandex.com/search/?text=' + enc(name + ' ' + (it.year || '') + ' online'),
       '#fc3f1d');
 
-    /* ---------- فيديو وبحث عام ---------- */
-
-    add('تريلر YouTube',
-      'https://www.youtube.com/results?search_query=' + enc(name + ' ' + (it.year || '') + ' trailer'),
-      '#ff0000');
+    /* ---------- بحث عام ---------- */
 
     if (it.homepage) add('الموقع الرسمي', it.homepage, '#e6b455', true);
 

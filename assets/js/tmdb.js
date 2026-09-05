@@ -194,8 +194,8 @@
 
   function details(type, id) {
     var appends = type === 'movie'
-      ? 'videos,credits,external_ids,similar,recommendations,keywords,translations,release_dates,watch/providers'
-      : 'videos,aggregate_credits,external_ids,similar,recommendations,keywords,translations,content_ratings,watch/providers';
+      ? 'credits,external_ids,similar,recommendations,keywords,translations,release_dates,watch/providers'
+      : 'aggregate_credits,external_ids,similar,recommendations,keywords,translations,content_ratings,watch/providers';
 
     return req('/' + type + '/' + id, { append_to_response: appends })
       .then(function (raw) {
@@ -232,14 +232,6 @@
         base.writers = (credits.crew || [])
           .filter(function (c) { return c.department === 'Writing'; })
           .map(function (c) { return c.name; }).slice(0, 3);
-
-        /* التريلر: نفضّل العربي ثم الرسمي ثم أي شي */
-        var vids = ((raw.videos || {}).results || []).filter(function (v) { return v.site === 'YouTube'; });
-        var trailer = vids.filter(function (v) { return v.type === 'Trailer' && v.official; })[0]
-                   || vids.filter(function (v) { return v.type === 'Trailer'; })[0]
-                   || vids.filter(function (v) { return v.type === 'Teaser'; })[0]
-                   || vids[0];
-        base.trailer = trailer ? { key: trailer.key, name: trailer.name } : null;
 
         /* منصات المشاهدة في المنطقة المختارة */
         var wp = (raw['watch/providers'] || {}).results || {};

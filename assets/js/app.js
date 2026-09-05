@@ -502,7 +502,6 @@
     var panel = $('#detail-panel');
     panel.innerHTML = CS.ui.detailSkeleton();
     window.scrollTo(0, 0);
-    watchPick = null;
     related = { items: [], page: 0, exhausted: false, loading: false };
 
     CS.tmdb.details(type, id).then(function (d) {
@@ -527,7 +526,6 @@
       window.scrollTo(0, 0);
       detailCtx = { d: d, extra: extra, token: token };
       CS.taste.enrich(d);
-      renderWatch();
       renderExtraData();
 
       if (extra.translating) {
@@ -988,221 +986,6 @@
   }
 
   /* ============================================================
-     إعدادات المصادر — سيرفرات المشاهدة الخاصة بالمشغّل
-     ============================================================ */
-
-  function openSources() {
-    fillPatterns();
-    renderSources();
-    var out = $('#out-src-add');
-    if (out) { out.className = 'keyrow__out'; out.textContent = ''; }
-    $('#src-preview').textContent = '';
-    $('#srcmodal').hidden = false;
-    document.body.classList.add('is-locked');
-    setTimeout(function () { $('#src-url').focus(); }, 60);
-  }
-
-  function closeSources() {
-    $('#srcmodal').hidden = true;
-    if ($('#settings').hidden) document.body.classList.remove('is-locked');
-  }
-
-  /* ثلاث حالات لا اثنتين: نجح · فشل · ما قدرت أحكم.
-     الخلط بين «فشل» و«ما قدرت أحكم» يخلّي الموقع يكذب على صاحبه. */
-  function statusLine(s, cls) {
-    cls = cls || 'srcitem__st';
-    if (!s.status) return '<i class="' + cls + '">⚪ ما تحقّقت منه بعد</i>';
-    var ok = s.status.ok;
-    var mark = ok === true ? '🟢 ' : ok === false ? '🔴 ' : '🟡 ';
-    var kind = ok === true ? ' is-ok' : ok === false ? ' is-bad' : ' is-warn';
-    return '<i class="' + cls + kind + '">' + mark + esc0(s.status.detail) + '</i>';
-  }
-
-  function renderSources() {
-    var list = CS.mySources.all();
-    var box = $('#src-list');
-
-    if (!list.length) {
-      box.innerHTML = '<div class="empty" style="padding:1.4rem">' +
-        '<b>⚪ ما فيه مواقع</b><p>الصق رابط أول موقع لك تحت — الرابط فقط، بلا شي ثاني.</p></div>';
-      return;
-    }
-
-    box.innerHTML = list.map(function (s) {
-      var where = CS.mySources.TYPES[s.type] || s.type;
-
-      return '<div class="srcitem' + (s.enabled ? '' : ' is-off') + '" data-src-row="' + esc0(s.id) + '">' +
-        '<div class="srcitem__top">' +
-          '<b class="srcitem__name">' + esc0(s.name) + '</b>' +
-          '<span class="srcitem__type">' + esc0(where) + '</span>' +
-        '</div>' +
-        '<a class="srcitem__url" dir="ltr" target="_blank" rel="noopener noreferrer" href="' +
-          esc0(sampleUrl(s)) + '">' + esc0(sampleUrl(s)) + '</a>' +
-        statusLine(s) +
-        '<a class="srcitem__try" target="_blank" rel="noopener noreferrer" href="' +
-          esc0(sampleUrl(s)) + '">↗ افتح رابط البحث وجرّبه بنفسك</a>' +
-        '<div class="srcitem__acts">' +
-          '<button class="btn btn--sm" data-src-test="' + esc0(s.id) + '">تحقق</button>' +
-          '<button class="btn btn--sm btn--ghost" data-src-toggle="' + esc0(s.id) + '">' +
-            (s.enabled ? 'إيقاف' : 'تشغيل') + '</button>' +
-          '<button class="btn btn--sm btn--ghost" data-src-del="' + esc0(s.id) + '">حذف</button>' +
-        '</div>' +
-      '</div>';
-    }).join('');
-  }
-
-  /* مثال حي للرابط اللي بيتولّد — يشوفه المستخدم قبل ما يضيف */
-  var SAMPLE = { id: 27205, type: 'movie', title: 'Inception', originalTitle: 'Inception',
-                 year: 2010, imdbId: 'tt1375666', source: 'tmdb' };
-
-  function sampleUrl(s) {
-    try { return CS.mySources.urlFor(s, SAMPLE); }
-    catch (e) { return s.url; }
-  }
-
-  /* يعبّي قائمة أنماط البحث ويحدّث المعاينة الحية */
-  function fillPatterns() {
-    var sel = $('#src-pattern');
-    if (sel.options.length) return;
-    CS.mySources.PATTERNS.forEach(function (p) {
-      sel.add(new Option(p.label, p.id));
-    });
-    sel.add(new Option('قالب مخصّص أكتبه بنفسي', 'custom'));
-  }
-
-  /* يظهر/يخفي حقول النموذج حسب النوع والنمط المختار */
-  function syncSrcForm() {
-    var type = $('#src-type').value;
-    var isSite = type === 'site';
-    $('#src-pattern').closest('.field').hidden = !isSite;
-    $('#src-tpl-wrap').hidden = !(isSite && $('#src-pattern').value === 'custom');
-    $('#src-key').closest('.field').hidden = isSite || type === 'video';
-    $('#src-url').placeholder =
-      isSite          ? 'https://example.com'
-      : type === 'video' ? 'https://your-cdn.com/films/{imdb}/master.m3u8'
-      : 'https://your-cdn.com/embed/{imdb}';
-  }
-
-  function previewSource() {
-    var raw = $('#src-url').value.trim();
-    var out = $('#src-preview');
-    if (!raw) { out.textContent = ''; $('#src-name').placeholder = 'يُستنتج من الرابط'; return; }
-
-    var host = CS.mySources.hostOf(raw);
-    if (!host) { out.textContent = '🔴 الرابط مو مفهوم'; return; }
-
-    $('#src-name').placeholder = CS.mySources.nameFromUrl(raw) || 'يُستنتج من الرابط';
-
-    /* نطاق معروف؟ نضبط نمطه تلقائيًا ونقول له */
-    var known = CS.mySources.knownFor(host);
-    /* لصق مثال بحث حقيقي؟ نتعلّم القالب منه — أدق من أي تخمين */
-    var learned = CS.mySources.learnTemplate(raw);
-    if ((known || learned) && !$('#src-pattern').dataset.touched) $('#src-pattern').value = 'custom';
-
-    var draft = {
-      type: $('#src-type').value,
-      url: CS.mySources.hasTokens(raw) ? raw : CS.mySources.originOf(raw),
-      origin: CS.mySources.originOf(raw),
-      pattern: learned ? 'custom' : $('#src-pattern').value,
-      tpl: learned || (known ? known.tpl
-            : ($('#src-pattern').value === 'custom' ? $('#src-tpl').value.trim() : '')),
-      key: $('#src-key').value.trim()
-    };
-
-    if ($('#src-type').value === 'video') {
-      out.innerHTML = '🎞️ ملف مباشر — الموقع بيشغّله داخل الصفحة' +
-        (CS.mySources.isHls(raw) ? ' بمشغّل HLS يتحمّل وقت التشغيل' : '') +
-        '. اضغط «أضف» وبيجرّب يفتحه فعلًا ويقول لك النتيجة.';
-      return;
-    }
-
-    var sample = sampleUrl(draft);
-    out.innerHTML = '🔎 رابط البحث اللي بيتولّد لفيلم Inception — ' +
-      '<a href="' + esc0(sample) + '" target="_blank" rel="noopener noreferrer">افتحه وشوفه بنفسك</a>:' +
-      '<br><code dir="ltr">' + esc0(sample) + '</code>' +
-      (learned
-        ? '<br>🎓 تعلّمت النمط من المثال اللي لصقته — هذا أضمن طريقة.'
-        : known
-        ? '<br>🟢 نطاق معروف — ضبطت رابط بحثه الرسمي تلقائيًا.'
-        : '<br>🟡 ما طلعت نتائج؟ افتح موقعك، ابحث فيه عن أي فيلم، وانسخ رابط صفحة ' +
-          'النتائج والصقه هنا — بيتعلّم النمط منه بالضبط. المتصفح ما يخلّينا نكتشفه تلقائيًا.');
-  }
-
-  function addSource() {
-    var url = $('#src-url').value.trim();
-    var out = $('#out-src-add');
-    if (!url) { out.className = 'keyrow__out is-bad'; out.textContent = '🔴 الصق رابط الموقع أولًا'; $('#src-url').focus(); return; }
-
-    try {
-      var s = CS.mySources.add({
-        name:    $('#src-name').value.trim(),
-        url:     url,
-        key:     $('#src-key').value.trim(),
-        type:    $('#src-type').value,
-        pattern: $('#src-pattern').value,
-        tpl:     $('#src-tpl').value.trim()
-      });
-      $('#src-name').value = '';
-      $('#src-url').value  = '';
-      $('#src-key').value  = '';
-      $('#src-tpl').value  = '';
-      $('#src-preview').textContent = '';
-      $('#src-pattern').dataset.touched = '';
-      $('#src-type').dataset.touched = '';
-      $('#src-type').value = 'site';
-      $('#src-pattern').value = 's';
-      $('#src-adv').open = false;
-      syncSrcForm();
-      renderSources();
-      out.className = 'keyrow__out is-ok';
-      out.textContent = '🟢 انضاف «' + s.name + '» — أفحصه الحين…';
-      testSource(s.id);
-    } catch (e) {
-      out.className = 'keyrow__out is-bad';
-      out.textContent = String(e && e.message) === 'BAD_URL'
-        ? '🔴 الرابط مو صحيح — لازم يكون نطاقًا مثل example.com'
-        : '🔴 ما قدرت أضيفه';
-    }
-  }
-
-  function testSource(id) {
-    var s = CS.mySources.byId(id);
-    if (!s) return Promise.resolve();
-
-    var row = $('[data-src-row="' + id + '"]');
-    var st  = row && row.querySelector('.srcitem__st');
-    if (st) { st.className = 'srcitem__st is-wait'; st.textContent = '⏳ أفحص…'; }
-
-    return CS.mySources.test(s).then(function () {
-      renderSources();
-      if (detailCtx) renderWatch();
-    });
-  }
-
-  function testAllSources() {
-    var list = CS.mySources.all();
-    if (!list.length) { CS.ui.toast('⚪ ما فيه مصادر أفحصها'); return; }
-
-    var btn = $('#btn-src-testall');
-    btn.disabled = true;
-    var label = btn.textContent;
-    btn.textContent = '⏳ يفحص…';
-
-    CS.util.pool(list, 2, function (s) { return CS.mySources.test(s); }).then(function () {
-      btn.disabled = false;
-      btn.textContent = label;
-      renderSources();
-      var list2 = CS.mySources.all();
-      var bad  = list2.filter(function (s) { return s.status && s.status.ok === false; }).length;
-      var warn = list2.filter(function (s) { return s.status && s.status.ok === null; }).length;
-      CS.ui.toast(bad ? '🔴 ' + bad + ' من المصادر فشلت'
-                : warn ? '🟡 ' + warn + ' ما قدرت أحكم عليها — افتح روابطها وجرّبها'
-                : '🟢 كل المصادر شغّالة');
-      if (detailCtx) renderWatch();
-    });
-  }
-
-  /* ============================================================
      مصادر البيانات — يضيفها المشغّل من الإعدادات
      ============================================================ */
 
@@ -1221,6 +1004,16 @@
     $('#ds-url').value = p.url;
     $('#ds-name').placeholder = p.name;
     $('#ds-key').placeholder = p.needsKey ? (p.keyLabel || 'مفتاح API') : 'ما يحتاج مفتاح';
+  }
+
+  /* ثلاث حالات لا اثنتين: نجح · فشل · ما قدرت أحكم */
+  function statusLine(d, cls) {
+    cls = cls || 'srcitem__st';
+    if (!d.status) return '<i class="' + cls + '">⚪ ما تحقّقت منه بعد</i>';
+    var ok = d.status.ok;
+    var mark = ok === true ? '🟢 ' : ok === false ? '🔴 ' : '🟡 ';
+    var kind = ok === true ? ' is-ok' : ok === false ? ' is-bad' : ' is-warn';
+    return '<i class="' + cls + kind + '">' + mark + esc0(d.status.detail) + '</i>';
   }
 
   function renderDataSources() {
@@ -1297,109 +1090,8 @@
     });
   }
 
-  /* ============================================================
-     قسم المشاهدة داخل صفحة العمل
-     ============================================================ */
-
-  var watchPick = null;
-  var watchResolved = {};
-
-  function activeSources() {
-    return CS.mySources.all().filter(function (s) { return s.enabled; });
-  }
-
-  function watchActive() {
-    var list = activeSources();
-    return list.filter(function (s) { return s.id === watchPick; })[0] || list[0] || null;
-  }
-
-  function renderWatch() {
-    var sec = $('#dt-watch');
-    if (!sec || !detailCtx) return;
-
-    var list = activeSources();
-    var active = list.filter(function (s) { return s.id === watchPick; })[0] || list[0];
-    var item = detailCtx.d;
-    var rkey = active ? active.id + '|' + item.type + '|' + item.id : '';
-
-    sec.innerHTML = CS.ui.watchSection(item, list, active ? active.id : null, watchResolved[rkey] || '');
-    attachMedia(sec);
-
-    /* مصدر من نوع API: نطلب منه رابط التشغيل ثم نعيد الرسم */
-    if (active && active.type === 'api' && !watchResolved[rkey] &&
-        !CS.mySources.missingFor(active, item).length) {
-      var token = detailCtx.token;
-      CS.mySources.resolveApi(active, item).then(function (url) {
-        if (token !== detailToken) return;
-        watchResolved[rkey] = url || '';
-        if (url) renderWatch();
-        else {
-          var s2 = $('#dt-watch');
-          if (s2) s2.innerHTML = CS.ui.watchSection(item, list, active.id, '') .replace(
-            'أطلب رابط التشغيل من ' + active.name + '…',
-            '🔴 ' + active.name + ' ما رجّع رابط تشغيل لهذا العمل.');
-        }
-      });
-    }
-  }
-
   /* ------------------------------------------------------------
-     تشغيل الملفات المباشرة
-     MP4 يشتغل بالعنصر نفسه. HLS: سفاري يشغّله أصلًا، وغيره
-     يحتاج hls.js — نحمّله وقت الحاجة فقط لا مع كل صفحة.
-     ------------------------------------------------------------ */
-
-  var HLS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.min.js';
-  var hlsLoading = null;
-
-  function loadHls() {
-    if (window.Hls) return Promise.resolve(window.Hls);
-    if (hlsLoading) return hlsLoading;
-    hlsLoading = new Promise(function (resolve, reject) {
-      var sc = document.createElement('script');
-      sc.src = HLS_URL;
-      sc.onload = function () { resolve(window.Hls); };
-      sc.onerror = function () { reject(new Error('ما قدرت أحمّل مشغّل HLS')); };
-      document.head.appendChild(sc);
-    });
-    return hlsLoading;
-  }
-
-  function attachMedia(root) {
-    $$('video[data-media-src]', root || document).forEach(function (v) {
-      if (v.dataset.wired) return;
-      v.dataset.wired = '1';
-      var url = v.dataset.mediaSrc;
-
-      /* MP4 وغيره: العنصر يكفي */
-      if (!CS.mySources.isHls(url)) { v.src = url; return; }
-
-      /* سفاري وiOS يشغّلون HLS بلا مكتبة */
-      if (v.canPlayType('application/vnd.apple.mpegurl')) { v.src = url; return; }
-
-      loadHls().then(function (Hls) {
-        if (!Hls || !Hls.isSupported()) throw new Error('متصفحك ما يدعم HLS');
-        var hls = new Hls({ enableWorker: true });
-        hls.loadSource(url);
-        hls.attachMedia(v);
-        hls.on(Hls.Events.ERROR, function (evt, data) {
-          if (!data || !data.fatal) return;
-          mediaFail(v, 'ما قدر يشغّل البث — ' +
-            (data.type === 'networkError'
-              ? 'سيرفرك ما يرسل ترويسات CORS، أو الرابط ما يوصل'
-              : 'خطأ في الوسائط'));
-        });
-      }).catch(function (e) { mediaFail(v, String(e && e.message || e)); });
-    });
-  }
-
-  function mediaFail(v, msg) {
-    var box = v.closest('.watch__frame');
-    if (box) box.innerHTML = '<div class="empty" style="padding:1.4rem">🔴 ' + esc0(msg) + '</div>';
-  }
-
-  /* ------------------------------------------------------------
-     بيانات إضافية من مصادر المشغّل
+     بيانات إضافية من مصادر البيانات في صفحة العمل
      ------------------------------------------------------------ */
 
   function renderExtraData() {
@@ -1425,7 +1117,6 @@
       if (sec2) sec2.innerHTML = CS.ui.dataSection(blocks);
     });
   }
-
 
   /* ============================================================
      الاقتراحات الفورية
@@ -1681,22 +1372,8 @@
       if (e.target.closest('[data-tab-all]')) { setTab('all'); startFeed('all'); return; }
       if (e.target.closest('[data-back]')) { goBack(); return; }
       if (e.target.closest('[data-close-settings]')) { closeSettings(); return; }
-      if (e.target.closest('[data-close-src]')) { closeSources(); return; }
-
       var keyBtn = e.target.closest('[data-test-key]');
       if (keyBtn) { verifyKeyRow(keyBtn); return; }
-
-      var st = e.target.closest('[data-src-test]');
-      if (st) { testSource(st.dataset.srcTest); return; }
-
-      var sg = e.target.closest('[data-src-toggle]');
-      if (sg) {
-        var cur = CS.mySources.all().filter(function (x) { return x.id === sg.dataset.srcToggle; })[0];
-        if (cur) CS.mySources.update(cur.id, { enabled: !cur.enabled });
-        renderSources();
-        if (detailCtx) renderWatch();
-        return;
-      }
 
       var dt2 = e.target.closest('[data-ds-test]');
       if (dt2) { testDataSource(dt2.dataset.dsTest); return; }
@@ -1721,27 +1398,6 @@
         return;
       }
 
-      var sd = e.target.closest('[data-src-del]');
-      if (sd) {
-        var gone = CS.mySources.all().filter(function (x) { return x.id === sd.dataset.srcDel; })[0];
-        if (gone && window.confirm('أحذف «' + gone.name + '»؟')) {
-          CS.mySources.remove(gone.id);
-          renderSources();
-          if (detailCtx) renderWatch();
-        }
-        return;
-      }
-
-      var wp = e.target.closest('[data-watch-src]');
-      if (wp) { watchPick = wp.dataset.watchSrc; renderWatch(); return; }
-
-      /* تجربة نمط بحث ثانٍ — الاختيار ينحفظ للمصدر فما يعيدها */
-      var pat = e.target.closest('[data-watch-pattern]');
-      if (pat && watchActive()) {
-        CS.mySources.update(watchActive().id, { pattern: pat.dataset.watchPattern });
-        renderWatch();
-        return;
-      }
       if (e.target.closest('[data-route-home]')) { e.preventDefault(); location.hash = '#/'; return; }
 
       if (!e.target.closest('#search-form')) hideSuggest();
@@ -1750,43 +1406,6 @@
     /* --- أزرار الهيدر --- */
     $('#btn-fav').addEventListener('click', function () { goTo('#/liked'); });
     $('#btn-settings').addEventListener('click', openSettings);
-    $('#btn-sources').addEventListener('click', openSources);
-    $('#btn-src-add').addEventListener('click', addSource);
-    $('#btn-src-testall').addEventListener('click', testAllSources);
-
-    /* معاينة حيّة: الاسم والنمط ورابط البحث المتولّد */
-    $('#src-url').addEventListener('input', function () {
-      var raw = this.value.trim();
-
-      /* النوع يتبع الرابط:
-         · امتداد وسائط أو نطاق مجرّد = إشارة قاطعة، تغلب أي اختيار سابق
-         · قالب فيه بدائل = ملتبس (مشغّل ولا رابط ولا API؟) فاختيار المستخدم يبقى */
-      var guess = raw ? CS.mySources.guessType(raw) : 'site';
-      var certain = !raw || CS.mySources.isMediaUrl(raw) || !CS.mySources.hasTokens(raw);
-
-      if (certain || !$('#src-type').dataset.touched) {
-        if (certain) $('#src-type').dataset.touched = '';
-        if ($('#src-type').value !== guess) {
-          $('#src-type').value = guess;
-          if (guess !== 'site') $('#src-adv').open = true;
-        }
-      }
-      syncSrcForm();
-      previewSource();
-    });
-
-    $('#src-pattern').addEventListener('change', function () {
-      this.dataset.touched = '1';
-      syncSrcForm();
-      previewSource();
-    });
-    $('#src-tpl').addEventListener('input', previewSource);
-    $('#src-type').addEventListener('change', function () {
-      this.dataset.touched = '1';
-      syncSrcForm();
-      previewSource();
-    });
-
     /* مصادر البيانات */
     $('#ds-preset').addEventListener('change', onPresetPick);
     $('#btn-ds-add').addEventListener('click', addDataSource);
@@ -1824,10 +1443,8 @@
 
     /* --- الاختصارات --- */
     document.addEventListener('keydown', function (e) {
-      var openModal = !$('#srcmodal').hidden ? '#srcmodal' : !$('#settings').hidden ? '#settings' : '';
-
-      if (e.key === 'Tab' && openModal) {
-        var panel = $('.modal__panel', $(openModal));
+      if (e.key === 'Tab' && !$('#settings').hidden) {
+        var panel = $('.modal__panel', $('#settings'));
         var f = $$('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled])', panel)
           .filter(function (el) { return el.offsetParent !== null; });
         if (!f.length) return;
@@ -1838,7 +1455,6 @@
       }
 
       if (e.key === 'Escape') {
-        if (!$('#srcmodal').hidden) return closeSources();
         if (!$('#settings').hidden) return closeSettings();
         if (CS.state.view === 'detail' || CS.state.view === 'person') return goBack();
         hideSuggest();
@@ -1855,7 +1471,7 @@
      حزام الأمان
      ============================================================ */
 
-  var REQUIRED = ['util', 'store', 'state', 'taste', 'certs', 'tmdb', 'wiki', 'sources', 'mySources', 'dataSources', 'links', 'feed', 'search', 'ui'];
+  var REQUIRED = ['util', 'store', 'state', 'taste', 'certs', 'tmdb', 'wiki', 'sources', 'dataSources', 'links', 'feed', 'search', 'ui'];
 
   function fatal(title, detail, showReload) {
     var bar = document.getElementById('fatal');
@@ -1903,7 +1519,7 @@
       var moved = CS.taste.migrate();
       if (moved) setTimeout(function () { CS.ui.toast('👍 نقلت ' + moved + ' من مفضلتك القديمة'); }, 900);
     });
-    step(function () { fillPatterns(); fillPresets(); syncSrcForm(); });
+    step(fillPresets);
     step(updateLikeCount);
     step(refreshKeyNotice);
     step(watchSentinels);
