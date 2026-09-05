@@ -186,7 +186,6 @@
     autoRounds = 0;
 
     $('#feed-title').textContent = titleFor(tab);
-    $('#age-warn').hidden = cert === 'all';
 
     CS.feed.reset({
       tab: tab,
@@ -1575,7 +1574,6 @@
       setTab(tab);
       CS.store.set(CS.KEYS.certTier, certFor(tab));
       $('#feed-title').textContent = titleFor(tab);
-      $('#age-warn').hidden = certFor(tab) === 'all';
     });
 
     var start = CS.hasKey() ? CS.tmdb.loadGenres().catch(function () {}) : Promise.resolve();

@@ -232,12 +232,6 @@ main{ max-width:1560px; margin-inline:auto; padding:clamp(1rem, 2.5vw, 1.8rem) c
 }
 .field--inline select:focus,.field--inline input:focus{ border-color:rgba(255,122,47,.5); }
 
-.agebar{
-  margin:-.4rem 0 1.2rem; padding:.7rem 1rem; font-size:.84rem;
-  background:rgba(236,72,153,.09); border:1px solid rgba(236,72,153,.3);
-  border-radius:var(--r); color:#f9a8d4;
-}
-
 /* ============================================================
    الشبكة والبطاقات
    ============================================================ */

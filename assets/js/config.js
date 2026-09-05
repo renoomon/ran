@@ -10,7 +10,7 @@ window.CS = window.CS || {};
   /* ---------- الثوابت ---------- */
 
   CS.config = {
-    version: '3.5.0',
+    version: '3.5.1',
     tmdb: {
       base: 'https://api.themoviedb.org/3',
       img: 'https://image.tmdb.org/t/p',
