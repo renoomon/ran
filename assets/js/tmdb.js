@@ -88,8 +88,14 @@
       popularity: raw.popularity || 0,
       overview: raw.overview || '',
       genreIds: raw.genre_ids || (raw.genres || []).map(function (g) { return g.id; }),
+      adult: raw.adult === true,
       source: 'tmdb'
     };
+  }
+
+  /* هل نسمح بالمحتوى الإباحي في نتائج TMDB؟ يتبع فلتر التصنيف */
+  function allowAdult() {
+    return !!(CS.certs && CS.certs.adultAllowed());
   }
 
   function normalizeList(list, forcedType) {
@@ -122,7 +128,7 @@
 
   function searchMulti(query, page) {
     return req('/search/multi', {
-      query: query, page: page || 1, include_adult: false
+      query: query, page: page || 1, include_adult: allowAdult()
     }).then(function (json) {
       var people = (json.results || []).filter(function (r) { return r.media_type === 'person'; });
       var items = normalizeList(json.results);
@@ -139,11 +145,21 @@
   }
 
   function searchByTitle(type, query, year) {
-    var params = { query: query, include_adult: false, page: 1 };
+    var params = { query: query, include_adult: allowAdult(), page: 1 };
     if (year) params[type === 'movie' ? 'primary_release_year' : 'first_air_date_year'] = year;
     return req('/search/' + type, params)
       .then(function (json) { return normalizeList(json.results, type); })
       .catch(function () { return []; });
+  }
+
+  /* بحث بالاسم في اللغتين — أساسي للاستعلامات العربية */
+  function searchTitleBoth(query) {
+    return Promise.all([
+      req('/search/movie', { query: query, include_adult: allowAdult(), page: 1 })
+        .then(function (j) { return normalizeList(j.results, 'movie'); }).catch(function () { return []; }),
+      req('/search/tv', { query: query, include_adult: allowAdult(), page: 1 })
+        .then(function (j) { return normalizeList(j.results, 'tv'); }).catch(function () { return []; })
+    ]).then(function (r) { return r[0].concat(r[1]); });
   }
 
   /* البحث بالكلمات المفتاحية: نحوّل الوصف لثيمات ثم نستكشف بها */
@@ -154,13 +170,27 @@
   }
 
   function discoverByKeywords(type, keywordIds, page) {
-    return req('/discover/' + type, {
-      with_keywords: keywordIds.join('|'),
+    return discover(type, { with_keywords: keywordIds.join('|') }, page);
+  }
+
+  /* استكشاف عام — يستخدمه صف «مختارة لك» وفلتر التصنيف */
+  function discover(type, extra, page) {
+    var params = {
       sort_by: 'popularity.desc',
-      include_adult: false,
+      include_adult: allowAdult(),
       'vote_count.gte': 30,
       page: page || 1
-    }).then(function (json) { return normalizeList(json.results, type); })
+    };
+    Object.keys(extra || {}).forEach(function (k) {
+      if (extra[k] !== undefined && extra[k] !== null && extra[k] !== '') params[k] = extra[k];
+    });
+
+    /* فلتر التصنيف العمري — TMDB يدعمه للأفلام فقط */
+    var certParam = CS.certs && CS.certs.discoverCert && CS.certs.discoverCert(type);
+    if (certParam) Object.keys(certParam).forEach(function (k) { params[k] = certParam[k]; });
+
+    return req('/discover/' + type, params)
+      .then(function (json) { return normalizeList(json.results, type); })
       .catch(function () { return []; });
   }
 
@@ -248,6 +278,15 @@
         base.keywords = ((raw.keywords || {}).keywords || (raw.keywords || {}).results || [])
           .map(function (k) { return { id: k.id, name: k.name }; });
 
+        /* التصنيف العمري — جاهز من نفس الطلب بلا نداء إضافي */
+        var certInfo = CS.certs ? CS.certs.fromDetails(raw, type, base.adult) : null;
+        if (certInfo) {
+          base.certTier = certInfo.tier;
+          base.cert = certInfo.cert;
+          base.certCountry = certInfo.country;
+          CS.certs.put(base, certInfo);
+        }
+
         base.similar = normalizeList(((raw.similar || {}).results || []), type);
         base.recommendations = normalizeList(((raw.recommendations || {}).results || []), type);
 
@@ -304,8 +343,10 @@
     genreNames: genreNames,
     searchMulti: searchMulti,
     searchByTitle: searchByTitle,
+    searchTitleBoth: searchTitleBoth,
     searchKeywords: searchKeywords,
     discoverByKeywords: discoverByKeywords,
+    discover: discover,
     details: details,
     trending: trending,
     topRated: topRated,

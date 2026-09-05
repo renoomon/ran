@@ -45,7 +45,11 @@ window.CS = window.CS || {};
     history:   'cs.history',
     noticeOff: 'cs.notice_off',
     email:     'cs.tr_email',
-    trCache:   'cs.tr_cache'
+    trCache:   'cs.tr_cache',
+    taste:     'cs.taste',
+    certTier:  'cs.cert_tier',
+    adultOn:   'cs.adult_on',
+    omdbKey:   'cs.omdb_key'
   };
 
   /* ---------- التخزين المحلي (آمن ضد الأوضاع الخاصة) ---------- */
@@ -91,35 +95,6 @@ window.CS = window.CS || {};
   };
 
   CS.hasKey = function () { return !!(CS.state.apiKey && CS.state.apiKey.length > 10); };
-
-  /* ---------- المفضلة ---------- */
-
-  CS.favorites = {
-    all: function () {
-      var list = CS.store.get(CS.KEYS.favorites, []);
-      return Array.isArray(list) ? list : [];
-    },
-    key: function (item) { return item.type + ':' + item.id; },
-    has: function (item) {
-      var k = CS.favorites.key(item);
-      return CS.favorites.all().some(function (f) { return CS.favorites.key(f) === k; });
-    },
-    toggle: function (item) {
-      var k = CS.favorites.key(item);
-      var list = CS.favorites.all().filter(function (f) { return CS.favorites.key(f) !== k; });
-      var added = list.length === CS.favorites.all().length;
-      if (added) {
-        list.unshift({
-          id: item.id, type: item.type, title: item.title,
-          year: item.year, poster: item.poster, rating: item.rating,
-          overview: item.overview || '', source: item.source || 'tmdb',
-          url: item.url || ''
-        });
-      }
-      CS.store.set(CS.KEYS.favorites, list.slice(0, 300));
-      return added;
-    }
-  };
 
   /* ---------- سجل البحث ---------- */
 

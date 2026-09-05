@@ -18,6 +18,7 @@
     var q = name + (it.year ? ' ' + it.year : '');
     var isMovie = it.type !== 'tv';
     var links = [];
+    var wd = it.wd || {};   /* معرّفات جاءت من ويكي داتا ← روابط مباشرة بدل بحث */
 
     function add(label, url, color, exact) {
       if (url) links.push({ label: label, url: url, color: color, exact: !!exact });
@@ -39,10 +40,12 @@
 
     if (isMovie) {
       add('Letterboxd',
-        it.imdbId
-          ? 'https://letterboxd.com/imdb/' + enc(it.imdbId) + '/'
-          : 'https://letterboxd.com/search/films/' + enc(q) + '/',
-        '#00e054', !!it.imdbId);
+        wd.letterboxd
+          ? 'https://letterboxd.com/film/' + enc(wd.letterboxd) + '/'
+          : it.imdbId
+            ? 'https://letterboxd.com/imdb/' + enc(it.imdbId) + '/'
+            : 'https://letterboxd.com/search/films/' + enc(q) + '/',
+        '#00e054', !!(wd.letterboxd || it.imdbId));
 
       add('Box Office Mojo',
         it.imdbId
@@ -61,19 +64,31 @@
     }
 
     add('Rotten Tomatoes',
-      'https://www.rottentomatoes.com/search?search=' + enc(name), '#fa320a');
+      wd.rotten
+        ? 'https://www.rottentomatoes.com/' + String(wd.rotten).replace(/^\/+/, '')
+        : 'https://www.rottentomatoes.com/search?search=' + enc(name),
+      '#fa320a', !!wd.rotten);
 
     add('Metacritic',
-      'https://www.metacritic.com/search/' + enc(name) + '/', '#ffcc33');
+      wd.metacritic
+        ? 'https://www.metacritic.com/' + String(wd.metacritic).replace(/^\/+/, '')
+        : 'https://www.metacritic.com/search/' + enc(name) + '/',
+      '#ffcc33', !!wd.metacritic);
 
     add('Trakt',
-      'https://trakt.tv/search?query=' + enc(name), '#ed1c24');
+      wd.trakt
+        ? 'https://trakt.tv/' + (isMovie ? 'movies/' : 'shows/') + enc(wd.trakt)
+        : 'https://trakt.tv/search?query=' + enc(name),
+      '#ed1c24', !!wd.trakt);
 
     add('Simkl',
       'https://simkl.com/search/?q=' + enc(name), '#6f42c1');
 
     add('MyAnimeList',
-      'https://myanimelist.net/search/all?q=' + enc(name), '#2e51a2');
+      wd.mal
+        ? 'https://myanimelist.net/anime/' + enc(wd.mal)
+        : 'https://myanimelist.net/search/all?q=' + enc(name),
+      '#2e51a2', !!wd.mal);
 
     /* ---------- وين تشوفه ---------- */
 

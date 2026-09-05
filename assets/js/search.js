@@ -51,28 +51,62 @@
 
   /* ---------- محرك 1: بالاسم ---------- */
 
+  /**
+   * البحث بالاسم على مرحلتين:
+   *  أ) نبحث بالنص كما كتبه المستخدم — TMDB يفهرس العناوين العربية
+   *  ب) ما لقينا تطابقًا قويًا؟ عندها فقط نستعين بالترجمة الإنجليزية
+   * الترتيب هذا يمنع الترجمة من إغراق نتيجة عربية صحيحة.
+   */
   function engineTitle(q, qEn) {
     if (!CS.hasKey()) return engineTitleWiki(q, qEn);
 
-    var jobs = [CS.tmdb.searchMulti(q).catch(function () { return { items: [] }; })];
-    if (qEn && norm(qEn) !== norm(q)) {
-      jobs.push(CS.tmdb.searchMulti(qEn).catch(function () { return { items: [] }; }));
+    function score(items, viaTranslation) {
+      return items.map(function (item, i) {
+        var sim = Math.max(similarity(item.title, q), similarity(item.originalTitle, q),
+                           qEn ? similarity(item.title, qEn) : 0,
+                           qEn ? similarity(item.originalTitle, qEn) : 0);
+        item.titleSim = sim;
+        item.why = item.viaPerson ? 'person' : 'title';
+        item.whyText = item.viaPerson ? ('من أعمال ' + item.viaPerson)
+                     : viaTranslation ? 'مطابقة بالاسم (عبر الترجمة)' : 'مطابقة بالاسم';
+
+        var base = item.viaPerson ? 34 : 66;
+        if (viaTranslation) base -= 16;              /* الترجمة أضعف دليلًا */
+        if (sim >= .85) base += 55;                  /* تطابق شبه تام ← يتصدّر */
+        else if (sim >= .7) base += 26;
+        item.engineScore = base + sim * 40 - Math.min(i, 14);
+        return item;
+      });
     }
 
-    return Promise.all(jobs).then(function (res) {
-      var out = [];
-      res.forEach(function (r) {
-        (r.items || []).forEach(function (item, i) {
-          var sim = Math.max(similarity(item.title, q), similarity(item.originalTitle, q),
-                             qEn ? similarity(item.title, qEn) : 0,
-                             qEn ? similarity(item.originalTitle, qEn) : 0);
-          item.why = item.viaPerson ? 'person' : 'title';
-          item.whyText = item.viaPerson ? ('من أعمال ' + item.viaPerson) : 'مطابقة بالاسم';
-          item.engineScore = (item.viaPerson ? 34 : 62) + sim * 46 - Math.min(i, 14);
-          out.push(item);
-        });
+    var native = Promise.all([
+      CS.tmdb.searchMulti(q).catch(function () { return { items: [] }; }),
+      CS.tmdb.searchTitleBoth(q).catch(function () { return []; })
+    ]).then(function (r) {
+      var seen = {}, out = [];
+      (r[0].items || []).concat(r[1]).forEach(function (it) {
+        var k = it.type + ':' + it.id;
+        if (seen[k]) return;
+        seen[k] = true;
+        out.push(it);
       });
-      return out;
+      return score(out, false);
+    });
+
+    return native.then(function (items) {
+      var best = items.reduce(function (m, x) { return Math.max(m, x.titleSim || 0); }, 0);
+
+      /* لقينا العمل بالعربي؟ خلاص، ما نحتاج نترجم */
+      if (best >= .7 || !qEn || norm(qEn) === norm(q)) return items;
+
+      return CS.tmdb.searchMulti(qEn)
+        .catch(function () { return { items: [] }; })
+        .then(function (r) {
+          var have = {};
+          items.forEach(function (x) { have[x.type + ':' + x.id] = true; });
+          var extra = (r.items || []).filter(function (x) { return !have[x.type + ':' + x.id]; });
+          return items.concat(score(extra, true));
+        });
     });
   }
 
@@ -99,7 +133,7 @@
 
   /* ---------- محرك 2: بوصف القصة ---------- */
 
-  function enginePlot(q, qEn) {
+  function enginePlot(q, qEn, asTitle) {
     var jobs = [CS.wiki.findWorks('ar', q, LIM.wikiSearch)];
     var english = qEn || (!CS.util.isArabic(q) ? q : '');
     if (english) jobs.push(CS.wiki.findWorks('en', english, LIM.wikiSearch));
@@ -119,12 +153,24 @@
       works.sort(function (a, b) { return a.rank - b.rank; });
       works = works.slice(0, LIM.wikiResolve);
 
+      /* على بحث بالاسم نصنّف النتيجة كمطابقة عنوان لا كمطابقة قصة */
+      function label(w, resolved) {
+        if (!asTitle) return resolved ? 'مطابقة في القصة' : 'مطابقة في القصة (ويكيبيديا)';
+        return 'مطابقة بالاسم (ويكيبيديا)';
+      }
+      function bonus(w, item) {
+        if (!asTitle) return 0;
+        var sim = Math.max(similarity(w.cleanTitle, q), similarity((item || {}).title || '', q));
+        if (item) item.titleSim = Math.max(item.titleSim || 0, sim);
+        return sim >= .85 ? 52 : sim >= .7 ? 24 : 0;
+      }
+
       if (!CS.hasKey()) {
         return works.map(function (w) {
           var item = fromWiki(w);
-          item.why = 'plot';
-          item.whyText = 'مطابقة في القصة';
-          item.engineScore = 66 - w.rank * 2.2;
+          item.why = asTitle ? 'title' : 'plot';
+          item.whyText = label(w, false);
+          item.engineScore = 66 - w.rank * 2.2 + bonus(w, item);
           return item;
         });
       }
@@ -135,18 +181,18 @@
           var best = pickBest(cands, w);
           if (!best) {
             var fb = fromWiki(w);
-            fb.why = 'plot';
-            fb.whyText = 'مطابقة في القصة (ويكيبيديا)';
-            fb.engineScore = 52 - w.rank * 2.2;
+            fb.why = asTitle ? 'title' : 'plot';
+            fb.whyText = label(w, false);
+            fb.engineScore = 52 - w.rank * 2.2 + bonus(w, fb);
             return fb;
           }
-          best.why = 'plot';
-          best.whyText = 'مطابقة في القصة';
+          best.why = asTitle ? 'title' : 'plot';
+          best.whyText = label(w, true);
           best.wikiUrl = w.wikiUrl;
           best.wikiTitle = w.wikiTitle;
           best.wikiLang = w.wikiLang;
           best.plotSnippet = w.extract;
-          best.engineScore = 74 - w.rank * 2.2;
+          best.engineScore = 74 - w.rank * 2.2 + bonus(w, best);
           return best;
         });
       });
@@ -247,10 +293,14 @@
           ? 'w:' + norm(item.title) + ':' + (item.year || '')
           : item.type + ':' + item.id;
 
+        /* المحتوى الإباحي ما يظهر إلا لو الفلتر يسمح به صراحة */
+        if (item.adult && CS.certs && !CS.certs.adultAllowed()) return;
+
         if (byKey[key]) {
           var prev = byKey[key];
           /* نفس العمل طلع من أكثر من محرك ← نرفع ثقته */
           prev.score = Math.max(prev.score, item.engineScore || 0) + 12;
+          prev.titleSim = Math.max(prev.titleSim || 0, item.titleSim || 0);
           prev.engines = prev.engines || [];
           if (prev.engines.indexOf(item.why) === -1) prev.engines.push(item.why);
           if (!prev.wikiUrl && item.wikiUrl) { prev.wikiUrl = item.wikiUrl; prev.wikiTitle = item.wikiTitle; prev.wikiLang = item.wikiLang; }
@@ -272,6 +322,8 @@
       if (item.votes > 120) item.score += Math.min(6, (item.rating || 0) * .65);
       if (!item.poster) item.score -= 9;
       if (item.source === 'wiki') item.score -= 4;
+      /* تطابق العنوان يغلب أي إشارة ثانية */
+      if ((item.titleSim || 0) >= .85) item.score += 40;
     });
 
     order.sort(function (a, b) { return b.score - a.score; });
@@ -313,11 +365,11 @@
 
     mode = mode || 'auto';
     var intent = mode === 'auto' ? detectIntent(q) : mode;
+    var isAr = CS.util.isArabic(q);
     var meta = { query: q, mode: mode, intent: intent, engines: [], translated: '', noKey: !CS.hasKey() };
 
     /* نترجم للإنجليزي عشان نفتح ويكيبيديا الإنجليزية وكلمات TMDB */
-    var needEn = CS.util.isArabic(q);
-    var prep = needEn ? CS.wiki.toEnglish(q) : Promise.resolve(q);
+    var prep = isAr ? CS.wiki.toEnglish(q) : Promise.resolve(q);
 
     return prep.then(function (qEn) {
       if (qEn && qEn !== q) meta.translated = qEn;
@@ -325,13 +377,18 @@
       var jobs = [];
       var wantTitle = (mode === 'title') || (mode === 'auto');
       var wantPlot  = (mode === 'plot')  || (mode === 'auto' && intent !== 'title');
-      var wantTheme = (mode === 'theme') || (mode === 'auto');
+      /* الثيمة تخدم وصف القصة — على بحث بالاسم تجيب ضجيج فقط */
+      var wantTheme = (mode === 'theme') || (mode === 'auto' && intent !== 'title');
 
-      /* استعلام قصير جدًا؟ الاسم أهم من القصة */
-      if (mode === 'auto' && intent === 'title') wantPlot = CS.util.words(q).length >= 3;
+      /* بحث بالاسم بالعربي: ويكيبيديا العربية أقوى مصدر لمطابقة العنوان */
+      if (mode === 'auto' && intent === 'title') wantPlot = isAr || CS.util.words(q).length >= 3;
 
       if (wantTitle) { meta.engines.push('title'); jobs.push(engineTitle(q, qEn)); }
-      if (wantPlot)  { meta.engines.push('plot');  jobs.push(enginePlot(q, qEn)); }
+      if (wantPlot)  {
+        var asTitle = (mode === 'auto' && intent === 'title');
+        meta.engines.push(asTitle ? 'wikiTitle' : 'plot');
+        jobs.push(enginePlot(q, qEn, asTitle));
+      }
       if (wantTheme) { meta.engines.push('theme'); jobs.push(engineTheme(q, qEn)); }
 
       return Promise.all(jobs.map(function (p) {
@@ -340,6 +397,10 @@
     }).then(function (sets) {
       var items = merge(sets);
       meta.core = items.length;
+
+      /* لقينا العنوان بثقة؟ ما نعرض الترجمة عشان ما توهم إننا بدّلنا بحثه */
+      var strong = items.some(function (x) { return (x.titleSim || 0) >= .85; });
+      if (strong && intent === 'title') meta.translated = '';
 
       /* نضيف الأعمال ذات الصلة بأفضل نتيجة */
       var top = items[0];
@@ -368,8 +429,119 @@
       .catch(function () { return []; });
   }
 
+  /* ============================================================
+     الاستكشاف المبني على الذوق
+     ============================================================ */
+
+  function dedupe(list, seen, taken) {
+    return list.filter(function (it) {
+      var k = it.type + ':' + it.id;
+      if (seen[k] || taken[k]) return false;
+      if (it.adult && CS.certs && !CS.certs.adultAllowed()) return false;
+      taken[k] = true;
+      return true;
+    });
+  }
+
+  /**
+   * يرجّع صفوف صفحة الاستكشاف حسب ما أعجب المستخدم.
+   * كل صف: { key, title, hint, items }
+   */
+  function discoverRows() {
+    if (!CS.hasKey()) return Promise.resolve([]);
+
+    var p = CS.taste.profile();
+    var seen = CS.taste.seenSet();
+    var taken = {};
+    var rows = [];
+
+    /* ما فيه ذوق بعد ← صفوف عامة */
+    if (!p.total) {
+      return Promise.all([
+        CS.tmdb.trending('week'),
+        CS.tmdb.nowPlaying(),
+        CS.tmdb.airingToday(),
+        CS.tmdb.topRated('movie')
+      ]).then(function (r) {
+        return [
+          { key: 'trend',  title: '🔥 الأكثر رواجًا هذا الأسبوع', hint: 'أفلام ومسلسلات', items: dedupe(r[0], seen, taken) },
+          { key: 'cinema', title: '🎟️ في السينما الآن',           hint: CS.state.region,   items: dedupe(r[1], seen, {}) },
+          { key: 'air',    title: '📺 مسلسلات تُعرض حاليًا',        hint: '',                items: dedupe(r[2], seen, {}) },
+          { key: 'top',    title: '🏆 أعلى الأفلام تقييمًا',        hint: 'على مرّ التاريخ',  items: dedupe(r[3], seen, {}) }
+        ].filter(function (row) { return row.items.length; });
+      });
+    }
+
+    var genreNames = (p.genres || []).map(function (id) {
+      return CS.state.genres.movie[id] || CS.state.genres.tv[id];
+    }).filter(Boolean).slice(0, 3).join('، ');
+
+    var jobs = [];
+
+    /* ١) مختارة لك — من أكثر أنواعك تكرارًا */
+    if (p.genres.length) {
+      var base = {
+        with_genres: p.genres.join(','),
+        without_genres: p.avoidGenres.length ? p.avoidGenres.join(',') : undefined,
+        'vote_count.gte': 60
+      };
+      jobs.push(Promise.all([
+        CS.tmdb.discover(p.leansTv ? 'tv' : 'movie', base),
+        CS.tmdb.discover(p.leansTv ? 'movie' : 'tv', base)
+      ]).then(function (r) {
+        return {
+          key: 'foryou',
+          title: '🎯 مختارة لك',
+          hint: genreNames ? 'مبنية على: ' + genreNames : '',
+          items: dedupe(r[0].concat(r[1]), seen, taken)
+        };
+      }));
+    }
+
+    /* ٢) لأنك حبيت … */
+    (p.recent || []).slice(0, 2).forEach(function (liked) {
+      jobs.push(
+        CS.tmdb.req('/' + liked.type + '/' + liked.id + '/recommendations', { page: 1 })
+          .then(function (json) {
+            return {
+              key: 'like:' + liked.type + ':' + liked.id,
+              title: '❤️ لأنك حبيت «' + liked.title + '»',
+              hint: '',
+              items: dedupe(CS.tmdb.normalizeList(json.results || [], liked.type), seen, taken)
+            };
+          })
+          .catch(function () { return null; })
+      );
+    });
+
+    /* ٣) الأجواء اللي تحبها — من الكلمات المفتاحية */
+    if (p.keywords.length) {
+      jobs.push(Promise.all([
+        CS.tmdb.discoverByKeywords('movie', p.keywords),
+        CS.tmdb.discoverByKeywords('tv', p.keywords)
+      ]).then(function (r) {
+        return {
+          key: 'mood',
+          title: '🌙 أجواء تشبه اللي عجبك',
+          hint: '',
+          items: dedupe(r[0].concat(r[1]), seen, taken)
+        };
+      }));
+    }
+
+    /* ٤) الرائج — يضل موجود دايمًا */
+    jobs.push(CS.tmdb.trending('week').then(function (list) {
+      return { key: 'trend', title: '🔥 الأكثر رواجًا', hint: 'بغضّ النظر عن ذوقك', items: dedupe(list, seen, taken) };
+    }));
+
+    return Promise.all(jobs).then(function (res) {
+      return res.filter(function (row) { return row && row.items && row.items.length >= 2; });
+    });
+  }
+
   CS.search = {
     run: run,
+    discoverRows: discoverRows,
     suggest: suggest,
     detectIntent: detectIntent,
     similarity: similarity,

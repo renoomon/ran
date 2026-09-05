@@ -55,8 +55,34 @@
 
   function scoreClass(r) { return r >= 7.5 ? 'is-high' : r > 0 && r < 5.5 ? 'is-low' : ''; }
 
+  /* شارة التصنيف العمري فوق البوستر */
+  function certBadge(item) {
+    var info = CS.certs.cachedFor(item);
+    if (!info) return '';
+    var t = CS.certs.tierInfo(info.tier);
+    var text = info.tier === 5 ? '🔥' : (t.emoji + ' ' + t.short);
+    var title = info.tier === 5 ? 'محتوى إباحي صريح'
+              : t.label + (info.cert ? ' · ' + info.cert + (info.country ? ' (' + info.country + ')' : '') : '');
+    return '<span class="card__cert" style="border-color:' + esc(t.color) + '55;color:' + esc(t.color) +
+           '" title="' + esc(title) + '">' + text + '</span>';
+  }
+
+  function voteBar(item, big) {
+    var v = CS.taste.verdict(item);
+    var k = esc(itemKey(item));
+    var cls = big ? ' vote--big' : '';
+    return '' +
+      '<div class="vote' + cls + '">' +
+        '<button class="vote__b vote__up' + (v === 1 ? ' is-on' : '') + '" data-vote="1" data-item="' + k + '" ' +
+          'aria-pressed="' + (v === 1 ? 'true' : 'false') + '" title="عجبني — يظهر في الاستكشاف">' +
+          '<span aria-hidden="true">👍</span>' + (big ? '<b>عجبني</b>' : '') + '</button>' +
+        '<button class="vote__b vote__down' + (v === -1 ? ' is-on' : '') + '" data-vote="-1" data-item="' + k + '" ' +
+          'aria-pressed="' + (v === -1 ? 'true' : 'false') + '" title="ما عجبني — ما يتكرر لك">' +
+          '<span aria-hidden="true">👎</span>' + (big ? '<b>ما عجبني</b>' : '') + '</button>' +
+      '</div>';
+  }
+
   function card(item) {
-    var fav = CS.favorites.has({ id: item.id, type: item.type });
     var sub = [];
     if (item.year) sub.push(item.year);
     sub.push(TYPE_AR[item.type] || '');
@@ -66,22 +92,23 @@
       ? '<span class="card__why ' + (WHY_CLASS[item.why] || '') + '">' + esc(item.whyText) + '</span>'
       : '';
 
+    var href = '#/work/' + itemKey(item);
+
     return '' +
       '<article class="card" data-key="' + esc(itemKey(item)) + '">' +
-        '<button class="card__link" data-open="' + esc(itemKey(item)) + '" aria-label="' + esc(item.title) + '">' +
+        '<a class="card__link" href="' + esc(href) + '" data-open="' + esc(itemKey(item)) + '">' +
           '<div class="card__poster">' + posterHtml(item) +
             (item.rating ? '<span class="card__score ' + scoreClass(item.rating) + '">' + item.rating.toFixed(1) + '</span>' : '') +
             '<span class="card__type">' + (TYPE_AR[item.type] || '') + '</span>' +
+            certBadge(item) +
           '</div>' +
           '<div class="card__body">' +
             '<h3 class="card__title">' + esc(item.title) + '</h3>' +
             '<p class="card__sub">' + esc(sub.filter(Boolean).join(' · ')) + '</p>' +
             why +
           '</div>' +
-        '</button>' +
-        '<button class="card__fav' + (fav ? ' is-on' : '') + '" data-fav="' + esc(itemKey(item)) + '" aria-label="حفظ في قائمتي" aria-pressed="' + (fav ? 'true' : 'false') + '">' +
-          '<svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.7-9.4-9A5.3 5.3 0 0 1 12 6.6 5.3 5.3 0 0 1 21.4 12c-1.9 4.3-9.4 9-9.4 9z"/></svg>' +
-        '</button>' +
+        '</a>' +
+        voteBar(item, false) +
       '</article>';
   }
 
@@ -105,7 +132,8 @@
 
   function linksHtml(item) {
     var list = CS.links.build(item);
-    return '<div class="links">' + list.map(function (l) {
+    return '<h3 class="sec__title">ابحث عنه في كل المواقع</h3>' +
+      '<div class="links">' + list.map(function (l) {
       return '<a class="linkbtn" href="' + esc(l.url) + '" target="_blank" rel="noopener noreferrer">' +
         '<span class="linkbtn__dot" style="background:' + esc(l.color) + '"></span>' +
         esc(l.label) +
@@ -163,7 +191,7 @@
   function detailSkeleton() {
     return '' +
       '<div class="dt__hero"><div class="dt__backdrop"></div>' +
-        '<button class="dt__close" data-close-detail aria-label="إغلاق">&times;</button></div>' +
+        '<button class="dt__close" data-back aria-label="رجوع">&#8594;</button></div>' +
       '<div class="dt__top">' +
         '<div class="dt__poster skel__poster"></div>' +
         '<div class="dt__headings"><div class="skel__line" style="height:26px;width:60%"></div>' +
@@ -220,12 +248,19 @@
    */
   function detail(d, extra) {
     extra = extra || {};
-    var isFav = CS.favorites.has(d);
     var facts = [];
 
     if (d.rating)   facts.push('<span class="fact fact--score">★ ' + d.rating.toFixed(1) + (d.votes ? ' · ' + d.votes.toLocaleString('en-US') : '') + '</span>');
     if (d.year)     facts.push('<span class="fact">' + d.year + '</span>');
     facts.push('<span class="fact">' + (TYPE_AR[d.type] || '') + '</span>');
+
+    var certInfo = CS.certs.cachedFor(d);
+    if (certInfo) {
+      var ct = CS.certs.tierInfo(certInfo.tier);
+      facts.push('<span class="fact" style="border-color:' + esc(ct.color) + '66;color:' + esc(ct.color) + '">' +
+        ct.emoji + ' ' + esc(ct.label) +
+        (certInfo.cert && certInfo.tier !== 5 ? ' · ' + esc(certInfo.cert) : '') + '</span>');
+    }
     if (d.runtime)  facts.push('<span class="fact">' + esc(CS.util.minutes(d.runtime)) + '</span>');
     if (d.seasons)  facts.push('<span class="fact">' + d.seasons + ' موسم</span>');
     (d.genres || []).forEach(function (g) { facts.push('<span class="fact fact--genre">' + esc(g) + '</span>'); });
@@ -254,7 +289,7 @@
     return '' +
       '<div class="dt__hero">' +
         '<div class="dt__backdrop">' + (d.backdrop ? '<img src="' + esc(d.backdrop) + '" alt="" loading="lazy">' : '') + '</div>' +
-        '<button class="dt__close" data-close-detail aria-label="إغلاق">&times;</button>' +
+        '<button class="dt__close" data-back aria-label="رجوع">&#8594;</button>' +
       '</div>' +
 
       '<div class="dt__top">' +
@@ -265,21 +300,21 @@
           (d.tagline ? '<p class="dt__tagline">«' + esc(d.tagline) + '»</p>' : '') +
           '<div class="dt__facts">' + facts.join('') + '</div>' +
           '<div class="dt__actions">' +
-            '<button class="btn' + (isFav ? '' : ' btn--ghost') + '" data-fav="' + esc(itemKey(d)) + '">' +
-              (isFav ? '❤️ محفوظ في قائمتي' : '🤍 احفظ في قائمتي') + '</button>' +
+            voteBar(d, true) +
             '<button class="btn btn--ghost" data-share="' + esc(itemKey(d)) + '">🔗 انسخ الرابط</button>' +
           '</div>' +
         '</div>' +
       '</div>' +
 
       '<div class="dt__body">' +
+        '<section id="dt-extra"></section>' +
         '<section id="dt-story">' + storySection(d, extra) + '</section>' +
 
         (provHtml ? '<section><h3 class="sec__title">وين تشوفه <span class="sec__note">(' + esc(CS.state.region) + ')</span></h3>' + provHtml + '</section>' : '') +
 
         (trailerHtml ? '<section><h3 class="sec__title">التريلر</h3>' + trailerHtml + '</section>' : '') +
 
-        '<section><h3 class="sec__title">ابحث عنه في كل المواقع</h3>' + linksHtml(d) + '</section>' +
+        '<section id="dt-links">' + linksHtml(d) + '</section>' +
 
         (castHtml ? '<section><h3 class="sec__title">طاقم العمل</h3>' + castHtml + '</section>' : '') +
 
@@ -289,6 +324,44 @@
 
         (recs.length ? '<section><h3 class="sec__title">لأنك شفت هذا <span class="sec__note">ترشيحات TMDB</span></h3><div class="rail">' + cards(recs) + '</div></section>' : '') +
       '</div>';
+  }
+
+  /* ---------- المصادر الإضافية (OMDb / TVmaze) ---------- */
+
+  function extraSources(d, ex) {
+    ex = ex || {};
+    var blocks = '';
+
+    if (ex.omdb) {
+      var o = ex.omdb, chips = [];
+      if (o.imdb)       chips.push(metaRow('IMDb', o.imdb + '/10' + (o.imdbVotes ? ' · ' + o.imdbVotes : '')));
+      if (o.rotten)     chips.push(metaRow('Rotten Tomatoes', o.rotten));
+      if (o.metacritic) chips.push(metaRow('Metacritic', o.metacritic + '/100'));
+      if (o.rated)      chips.push(metaRow('التصنيف الأمريكي', o.rated));
+      if (o.awards)     chips.push(metaRow('الجوائز', o.awards));
+      if (o.boxOffice)  chips.push(metaRow('شبّاك التذاكر', o.boxOffice));
+      if (chips.length) {
+        blocks += '<h3 class="sec__title">تقييمات المواقع <span class="sec__note">OMDb</span></h3>' +
+                  '<div class="metatable">' + chips.join('') + '</div>';
+      }
+    }
+
+    if (ex.tvmaze) {
+      var t = ex.tvmaze, rows = '';
+      rows += metaRow('الحالة', t.status);
+      rows += metaRow('موعد العرض', t.schedule);
+      rows += metaRow('الشبكة', t.network);
+      if (t.next) rows += metaRow('الحلقة القادمة',
+        'م' + t.next.season + ' ح' + t.next.number + (t.next.airdate ? ' · ' + t.next.airdate : ''));
+      if (t.prev) rows += metaRow('آخر حلقة عُرضت',
+        'م' + t.prev.season + ' ح' + t.prev.number + (t.prev.airdate ? ' · ' + t.prev.airdate : ''));
+      if (rows) {
+        blocks += '<h3 class="sec__title">مواعيد الحلقات <span class="sec__note">TVmaze</span></h3>' +
+                  '<div class="metatable">' + rows + '</div>';
+      }
+    }
+
+    return blocks;
   }
 
   /* ---------- حالة فارغة ---------- */
@@ -315,6 +388,9 @@
     row: row,
     detail: detail,
     storySection: storySection,
+    extraSources: extraSources,
+    voteBar: voteBar,
+    certBadge: certBadge,
     detailSkeleton: detailSkeleton,
     emptyHtml: emptyHtml,
     itemKey: itemKey,

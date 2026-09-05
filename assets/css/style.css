@@ -340,20 +340,48 @@ main{ max-width:1360px; margin-inline:auto; padding:clamp(1.2rem, 3vw, 2.4rem) c
   padding:.16rem .45rem; border-radius:7px;
 }
 
-.card__fav{
-  position:absolute; bottom:.5rem; inset-inline-end:.5rem;
-  width:32px; height:32px; border-radius:50%;
-  display:grid; place-items:center;
-  background:rgba(8,10,15,.8); backdrop-filter:blur(6px);
+/* شارة التصنيف العمري */
+.card__cert{
+  position:absolute; bottom:.5rem; inset-inline-start:.5rem;
+  background:rgba(8,10,15,.88); backdrop-filter:blur(6px);
   border:1px solid rgba(255,255,255,.12);
-  opacity:0; transform:translateY(5px);
-  transition:all .2s var(--ease);
+  font-size:.68rem; font-weight:900; letter-spacing:.01em;
+  padding:.14rem .42rem; border-radius:7px; white-space:nowrap;
 }
-.card:hover .card__fav,
-.card__fav.is-on{ opacity:1; transform:none; }
-.card__fav svg{ width:16px; height:16px; fill:none; stroke:#fff; stroke-width:2; }
-.card__fav.is-on svg{ fill:var(--red); stroke:var(--red); }
-.card__fav:hover{ background:rgba(224,82,63,.28); }
+
+/* أزرار عجبني / ما عجبني */
+.vote{
+  display:flex; gap:.35rem; padding:0 .55rem .6rem;
+  margin-top:auto;
+}
+.vote__b{
+  flex:1; display:flex; align-items:center; justify-content:center; gap:.3rem;
+  padding:.34rem .4rem; border-radius:9px;
+  border:1px solid var(--line); background:var(--surface-2);
+  font-size:.86rem; line-height:1;
+  transition:all .16s var(--ease);
+}
+.vote__b b{ font-size:.76rem; font-weight:700; }
+.vote__b:hover{ border-color:#3a4360; transform:translateY(-1px); }
+.vote__up.is-on{ background:rgba(63,191,127,.18); border-color:rgba(63,191,127,.5); }
+.vote__down.is-on{ background:rgba(224,82,63,.16); border-color:rgba(224,82,63,.45); }
+
+.vote--big{ padding:0; margin:0; gap:.5rem; }
+.vote--big .vote__b{
+  flex:0 0 auto; padding:.6rem 1.2rem; border-radius:99px;
+  font-size:.95rem; font-weight:800;
+}
+
+.taste-state{
+  margin-top:1rem; font-size:.85rem; color:var(--text-2);
+}
+.taste-state b{ color:var(--gold-soft); }
+.linkish{
+  color:var(--gold-soft); text-decoration:underline; text-underline-offset:3px;
+  font-size:.82rem; font-weight:700; padding:0;
+}
+.hero__tools{ display:flex; justify-content:center; gap:.6rem; margin-top:1.2rem; flex-wrap:wrap; }
+.hero__tools .filters__field span{ text-align:center; }
 
 .card__body{ padding:.6rem .7rem .75rem; display:flex; flex-direction:column; gap:.2rem; flex:1; }
 .card__title{
@@ -409,28 +437,29 @@ main{ max-width:1360px; margin-inline:auto; padding:clamp(1.2rem, 3vw, 2.4rem) c
 .btn--sm{ padding:.42rem 1rem; font-size:.8rem; }
 
 /* ============================================================
-   لوحة التفاصيل
+   صفحة العمل (صفحة كاملة داخل نفس التبويب)
    ============================================================ */
 
-.sheet{ position:fixed; inset:0; z-index:100; display:flex; justify-content:center; align-items:flex-end; }
-.sheet[hidden]{ display:none; }
-.sheet__backdrop{ position:absolute; inset:0; background:rgba(4,5,9,.82); backdrop-filter:blur(8px); animation:fade .25s var(--ease); }
+.view--detail{ margin-inline:calc(-1 * clamp(.9rem, 3vw, 2rem)); }
 
-.sheet__panel{
-  position:relative; z-index:1;
-  width:min(1120px, 100%); max-height:96vh; overflow-y:auto;
+#detail-panel{
+  display:block;
   background:var(--bg-2);
-  border:1px solid var(--line); border-bottom:0;
-  border-radius:var(--radius-lg) var(--radius-lg) 0 0;
-  box-shadow:0 -30px 80px -30px rgba(0,0,0,1);
-  animation:rise .34s var(--ease);
-  outline:none;
+  border:1px solid var(--line);
+  border-radius:var(--radius-lg);
+  overflow:hidden;
+  box-shadow:var(--shadow);
+  animation:rise .28s var(--ease);
 }
 @keyframes fade{ from{ opacity:0; } }
-@keyframes rise{ from{ transform:translateY(40px); opacity:0; } }
+@keyframes rise{ from{ transform:translateY(16px); opacity:0; } }
 
 .dt__hero{ position:relative; }
-.dt__backdrop{ position:relative; aspect-ratio:16/7; min-height:190px; background:var(--surface-2); overflow:hidden; }
+.dt__backdrop{
+  position:relative; aspect-ratio:16/6;
+  min-height:190px; max-height:min(46vh, 420px);
+  background:var(--surface-2); overflow:hidden;
+}
 .dt__backdrop img{ width:100%; height:100%; object-fit:cover; opacity:.55; }
 .dt__backdrop::after{
   content:''; position:absolute; inset:0;
@@ -439,12 +468,12 @@ main{ max-width:1360px; margin-inline:auto; padding:clamp(1.2rem, 3vw, 2.4rem) c
 
 .dt__close{
   position:absolute; top:1rem; inset-inline-end:1rem; z-index:3;
-  width:40px; height:40px; border-radius:50%;
+  width:42px; height:42px; border-radius:50%;
   background:rgba(8,10,15,.75); backdrop-filter:blur(8px);
   border:1px solid rgba(255,255,255,.14);
-  color:#fff; font-size:1.5rem; line-height:1; display:grid; place-items:center;
+  color:#fff; font-size:1.4rem; line-height:1; display:grid; place-items:center;
 }
-.dt__close:hover{ background:rgba(224,82,63,.4); }
+.dt__close:hover{ background:var(--gold-dim); color:var(--gold); border-color:rgba(230,180,85,.5); }
 
 .dt__top{
   position:relative; z-index:2; margin-top:-110px;
@@ -602,8 +631,10 @@ main{ max-width:1360px; margin-inline:auto; padding:clamp(1.2rem, 3vw, 2.4rem) c
   .filters__field select,.filters__field input{ width:100%; min-width:0; }
   .dt__top{ grid-template-columns:1fr; margin-top:-60px; }
   .dt__poster{ width:min(150px, 40vw); }
-  .sheet__panel{ max-height:100vh; border-radius:0; }
+  #detail-panel{ border-radius:0; border-inline:0; }
   .modal__panel{ border-radius:var(--radius); }
+  .vote--big{ width:100%; }
+  .vote--big .vote__b{ flex:1; }
 }
 
 @media (prefers-reduced-motion: reduce){
