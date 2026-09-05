@@ -249,15 +249,28 @@
     if (d.directors && d.directors.length) facts.push('<span class="fact">🎬 ' + esc(d.directors.join('، ')) + '</span>');
     if (d.countries && d.countries.length) facts.push('<span class="fact">' + esc(d.countries.slice(0, 2).join('، ')) + '</span>');
 
-    /* وسوم المحتوى الحسّي — من كلمات TMDB الحقيقية */
+    /* وسوم العمل — كلمات TMDB المفتاحية كما هي بالإنجليزي.
+       هذي هي تصنيف العمل الحقيقي: sea battle · time loop · heist …
+       والوسوم الحسّاسة تتلوّن بلون مختلف لكنها تشتغل بنفس الطريقة. */
     var heatHtml = '';
-    if (d.heat && d.heat.tags.length) {
-      heatHtml = '<section><h3 class="sec__title">وسوم المحتوى ' +
-        '<span class="sec__note">اضغط الوسم يعرض لك كل الأعمال اللي تحمله</span></h3>' +
-        '<div class="tags">' + d.heat.tags.map(function (t) {
-          /* الوسم مصطلح TMDB الإنجليزي نفسه، فالضغط يبحث عنه ككلمة مفتاحية حقيقية */
-          return '<a class="tag tag--heat" href="#/tag/' + esc(encodeURIComponent(t)) +
-            '" data-tag="' + esc(t) + '">#' + esc(String(t).replace(/\s+/g, '-')) + '</a>';
+    var hot = (d.heat && d.heat.tags) || [];
+    var kws = (d.keywords || []).map(function (k) { return k.name; })
+      .filter(function (n) { return n && String(n).length <= 34; });
+
+    /* الحسّاسة أولًا ثم البقية، بلا تكرار */
+    var allTags = hot.concat(kws).filter(function (t, i, a) {
+      return a.map(function (x) { return String(x).toLowerCase(); })
+              .indexOf(String(t).toLowerCase()) === i;
+    }).slice(0, 18);
+
+    if (allTags.length) {
+      heatHtml = '<section><h3 class="sec__title">الوسوم ' +
+        '<span class="sec__note">اضغط أي وسم يجيب لك كل الأعمال اللي تحمله</span></h3>' +
+        '<div class="tags">' + allTags.map(function (t) {
+          var isHot = hot.some(function (h) { return String(h).toLowerCase() === String(t).toLowerCase(); });
+          return '<a class="tag' + (isHot ? ' tag--heat' : ' tag--kw') + '" href="#/tag/' +
+            esc(encodeURIComponent(t)) + '" data-tag="' + esc(t) + '">#' +
+            esc(String(t).replace(/\s+/g, '-')) + '</a>';
         }).join('') + '</div></section>';
     }
 
@@ -369,38 +382,78 @@
   }
 
   /* قسم المشاهدة من مصادر المشغّل */
-  /* بيانات إضافية جاءت من مصادر البيانات اللي أضافها المشغّل */
+  /* بيانات إضافية من مصادر المشغّل.
+     المزوّدون يكرّرون بعض: MDBList وOMDb يعطيان تقييم IMDb نفسه.
+     فندمج الكل في جدول واحد، كل قياس مرة وحدة، ومكتوب جنبه من وين جاء. */
+
+  /* ترتيب العرض، وأي اسم يقابل أي قياس */
+  var METRICS = [
+    'تقييم IMDb', 'أصوات IMDb', 'روتن توميتوز', 'ميتاكريتيك', 'تريكت', 'تقييم Trakt',
+    'ليتربوكسد', 'نقاد روجر إيبرت', 'تقييم Simkl', 'التقييم', 'عدد الأصوات', 'عدد المقيّمين',
+    'الجوائز', 'شبّاك التذاكر', 'الميزانية', 'الإيرادات', 'التصنيف العمري', 'المدة',
+    'الشبكة', 'الحالة', 'اللغة', 'البلد', 'مدة الحلقة', 'العرض الأول', 'الاسم', 'سنة البداية',
+    'منصّات متاحة', 'بوسترات', 'خلفيات', 'شعارات', 'الموقع الرسمي'
+  ];
+
+  function metricRank(label) {
+    var i = METRICS.indexOf(label);
+    return i === -1 ? METRICS.length : i;
+  }
+
   function dataSection(blocks) {
     if (!blocks || !blocks.length) return '';
 
-    /* مصدر ما ينطبق على نوع العمل أصلًا ما يستاهل بطاقة كاملة — سطر واحد يكفي */
+    var loading = blocks.filter(function (b) { return b.loading; });
     var skipped = blocks.filter(function (b) { return !b.loading && !b.ok && /^يحتاج /.test(b.detail || ''); });
-    var shown   = blocks.filter(function (b) { return skipped.indexOf(b) === -1; });
-    if (!shown.length && !skipped.length) return '';
+    var failed  = blocks.filter(function (b) { return !b.loading && !b.ok && skipped.indexOf(b) === -1; });
+    var okBlocks = blocks.filter(function (b) { return b.ok && b.rows && b.rows.length; });
 
-    var cards = shown.map(function (b) {
-      var body;
-      if (b.loading) body = '<i class="ds__wait">⏳ يجيب…</i>';
-      else if (!b.ok) body = '<i class="ds__bad">🔴 ' + esc(b.detail || 'ما رجّع بيانات') + '</i>';
-      else if (!b.rows.length) body = '<i class="ds__bad">🟡 ما فيه بيانات لهذا العمل</i>';
-      else body = '<dl class="ds__rows">' + b.rows.map(function (r) {
-        var v = String(r[1]);
-        var val = /^https?:\/\//.test(v)
-          ? '<a href="' + esc(v) + '" target="_blank" rel="noopener noreferrer">' + esc(v) + '</a>'
-          : esc(v);
-        return '<dt>' + esc(r[0]) + '</dt><dd>' + val + '</dd>';
-      }).join('') + '</dl>';
+    /* ندمج: أول مزوّد يعطي القياس هو المرجع، والباقي يُذكرون كمصادر مؤكِّدة */
+    var merged = {}, order = [];
+    okBlocks.forEach(function (b) {
+      b.rows.forEach(function (r) {
+        var label = String(r[0]), value = String(r[1]);
+        if (!merged[label]) { merged[label] = { value: value, from: [b.name] }; order.push(label); }
+        else if (merged[label].from.indexOf(b.name) === -1) {
+          /* نفس القياس بقيمة مختلفة؟ نبيّن الاختلاف بدل ما نخفيه */
+          if (merged[label].value !== value) merged[label].alt = merged[label].alt || [];
+          if (merged[label].value !== value) merged[label].alt.push(b.name + ': ' + value);
+          merged[label].from.push(b.name);
+        }
+      });
+    });
 
-      return '<div class="ds"><b class="ds__name">' + esc(b.name) + '</b>' + body + '</div>';
+    order.sort(function (a, b) { return metricRank(a) - metricRank(b); });
+
+    var rows = order.map(function (label) {
+      var m = merged[label];
+      var v = /^https?:\/\//.test(m.value)
+        ? '<a href="' + esc(m.value) + '" target="_blank" rel="noopener noreferrer">' + esc(m.value) + '</a>'
+        : esc(m.value);
+      return '<div class="mrow"><span class="mrow__k">' + esc(label) + '</span>' +
+        '<b class="mrow__v">' + v + '</b>' +
+        '<i class="mrow__src" title="' + esc(m.from.join(' · ')) + '">' + esc(m.from[0]) +
+        (m.from.length > 1 ? ' +' + (m.from.length - 1) : '') + '</i>' +
+        (m.alt ? '<i class="mrow__alt">' + esc(m.alt.join(' · ')) + '</i>' : '') +
+        '</div>';
     }).join('');
 
-    var note = skipped.length
-      ? '<p class="ds__skip">⚪ ما ناديت ' +
-        skipped.map(function (b) { return esc(b.name) + ' (' + esc(b.detail) + ')'; }).join('، ') + '.</p>'
-      : '';
+    var notes = [];
+    if (loading.length) notes.push('⏳ ' + loading.map(function (b) { return esc(b.name); }).join('، '));
+    if (failed.length) notes.push('🔴 ' + failed.map(function (b) {
+      return esc(b.name) + ' (' + esc(b.detail || 'ما رد') + ')';
+    }).join('، '));
+    if (skipped.length) notes.push('⚪ ' + skipped.map(function (b) {
+      return esc(b.name) + ' (' + esc(b.detail) + ')';
+    }).join('، '));
 
-    return '<h3 class="sec__title">بيانات إضافية <span class="sec__note">من مصادرك</span></h3>' +
-      (cards ? '<div class="dslist">' + cards + '</div>' : '') + note;
+    if (!rows && !notes.length) return '';
+
+    var used = okBlocks.map(function (b) { return esc(b.name); }).join(' · ');
+    return '<h3 class="sec__title">بيانات إضافية ' +
+      (used ? '<span class="sec__note">' + used + '</span>' : '') + '</h3>' +
+      (rows ? '<div class="mtable">' + rows + '</div>' : '') +
+      (notes.length ? '<p class="ds__skip">' + notes.join(' · ') + '</p>' : '');
   }
 
   CS.ui = {

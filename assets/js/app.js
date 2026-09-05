@@ -1133,13 +1133,35 @@
 
     CS.util.pool(list, 3, function (d) {
       return CS.dataSources.fetchFor(d, item).then(function (r) {
-        return { name: d.name, ok: r.ok, rows: r.rows, detail: r.detail };
+        return { name: d.name, ok: r.ok, rows: r.rows, art: r.art, detail: r.detail };
       });
     }).then(function (blocks) {
       if (token !== detailToken) return;
       var sec2 = $('#dt-datasources');
       if (sec2) sec2.innerHTML = CS.ui.dataSection(blocks);
+
+      /* شعار عالي الدقة من مصادرك يحلّ محل العنوان النصي */
+      var art = blocks.filter(function (b) { return b.art && b.art.logo; })[0];
+      if (art) applyLogo(art.art.logo);
     });
+  }
+
+  /* الشعار يُركّب فوق الخلفية بدل عنوان نصي — يستفيد من مصدر الصور فعليًا */
+  function applyLogo(url) {
+    var t = $('#detail-panel .dt__title');
+    if (!t || t.dataset.logo) return;
+
+    /* نركّبه على طول ونرجّع النص لو الصورة ما جت — أبسط من انتظار حدث تحميل
+       قد لا ينطلق أصلًا، والنتيجة نفسها بلا سباق */
+    var text = t.textContent;
+    t.dataset.logo = '1';
+    t.innerHTML = '<img class="dt__logo" src="' + attrEsc(url) + '" alt="' + attrEsc(text) + '">';
+
+    var img = t.querySelector('img');
+    if (img) img.onerror = function () {
+      t.dataset.logo = '';
+      t.textContent = text;
+    };
   }
 
   /* ============================================================

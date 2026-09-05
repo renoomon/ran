@@ -91,11 +91,18 @@
       needs: ['tmdb'],
       only: 'movie',
       pick: function (j) {
+        /* الصور نفسها هي الفائدة، لا عددها — نمرّرها للواجهة */
+        var logo = (j.hdmovielogo || j.movielogo || [])[0];
+        var back = (j.moviebackground || [])[0];
         return [
-          ['بوسترات', (j.movieposter || []).length],
-          ['خلفيات', (j.moviebackground || []).length],
-          ['شعارات', (j.hdmovielogo || []).length]
+          ['شعار العمل', logo && logo.url ? logo.url : ''],
+          ['خلفية عالية الدقة', back && back.url ? back.url : '']
         ];
+      },
+      /* الواجهة تستفيد من الشعار مباشرة فوق البوستر */
+      art: function (j) {
+        var logo = (j.hdmovielogo || j.movielogo || [])[0];
+        return { logo: logo && logo.url ? logo.url : '' };
       }
     },
     {
@@ -374,7 +381,10 @@
           rows = (rows || []).filter(function (r2) {
             return r2 && r2[1] !== undefined && r2[1] !== null && String(r2[1]).trim() !== '' && String(r2[1]) !== '0';
           });
-          return { ok: true, rows: rows, detail: rows.length ? '' : 'رد بنجاح بلا حقول معروضة' };
+          /* بعض المزوّدين يعطون صورًا تستفيد منها الواجهة لا مجرد أرقام تُعرض */
+          var art = p && p.art ? p.art(j) : null;
+          return { ok: true, rows: rows, art: art,
+                   detail: rows.length ? '' : 'رد بنجاح بلا حقول معروضة' };
         });
       })
       .catch(function (e) {
