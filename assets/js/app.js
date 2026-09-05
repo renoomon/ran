@@ -751,6 +751,7 @@
     $('#set-autotr').checked = autoTranslateOn();
     $('#set-adultonly').checked = adultOnlyOn();
     fillPresets();
+    onPresetPick();
     renderDataSources();
     var dsOut = $('#out-ds-add');
     if (dsOut) { dsOut.className = 'keyrow__out'; dsOut.textContent = ''; }
@@ -949,19 +950,34 @@
   function fillPresets() {
     var sel = $('#ds-preset');
     if (sel.options.length) return;
-    sel.add(new Option('— بدون · أكتب رابطي —', ''));
     CS.dataSources.PRESETS.forEach(function (p) {
       sel.add(new Option(p.name + ' — ' + p.hint, p.id));
     });
+    sel.add(new Option('⚙️ مصدر خاص فيي (عندي رابط API)', 'custom'));
+    /* TMDB محرّك الموقع أصلًا، فالافتراضي أنفع مصدر إضافي */
+    sel.value = CS.dataSources.preset('omdb') ? 'omdb' : sel.options[0].value;
+    onPresetPick();
   }
 
   function onPresetPick() {
-    var p = CS.dataSources.preset($('#ds-preset').value);
-    if (!p) { $('#ds-name').placeholder = 'يُستنتج من الرابط';
-              $('#ds-key').placeholder = 'اتركه فاضي لو المصدر ما يحتاج مفتاح'; return; }
+    var v = $('#ds-preset').value;
+    var custom = v === 'custom';
+    $('#ds-custom').hidden = !custom;
+
+    if (custom) {
+      $('#ds-hint').textContent = 'الصق رابط الـAPI تحت، والمفتاح فوق لو المصدر يحتاجه.';
+      $('#ds-key').placeholder = 'الصق المفتاح لو المصدر يحتاجه';
+      return;
+    }
+
+    var p = CS.dataSources.preset(v);
+    if (!p) return;
     $('#ds-url').value = p.url;
-    $('#ds-name').placeholder = p.name;
-    $('#ds-key').placeholder = p.needsKey ? (p.keyLabel || 'مفتاح API') : 'ما يحتاج مفتاح';
+    $('#ds-name').value = '';
+    $('#ds-hint').textContent = p.needsKey
+      ? 'خذ مفتاحك المجاني من ' + p.site + ' والصقه تحت.'
+      : p.name + ' ما يحتاج مفتاح — اضغط «أضف» على طول.';
+    $('#ds-key').placeholder = p.needsKey ? (p.keyLabel || 'مفتاح API') : 'ما يحتاج مفتاح — اتركه فاضي';
   }
 
   /* ثلاث حالات لا اثنتين: نجح · فشل · ما قدرت أحكم */
@@ -1010,30 +1026,79 @@
     return String(d.url).replace(/\{key\}/g, d.key ? '••••' : '{key}');
   }
 
+  /* شكل المفتاح: نص متصل بلا مسافات ولا نقطتين — يعني مو رابطًا */
+  function looksLikeKey(v) {
+    return !!v && !/\s/.test(v) && !/^https?:/i.test(v) && v.indexOf('://') === -1 &&
+           /^[A-Za-z0-9_.\-]{8,}$/.test(v);
+  }
+
   function addDataSource() {
     var out = $('#out-ds-add');
-    try {
-      var d = CS.dataSources.add({
-        preset: $('#ds-preset').value,
-        name:   $('#ds-name').value.trim(),
-        url:    $('#ds-url').value.trim(),
-        key:    $('#ds-key').value.trim()
-      });
-      $('#ds-name').value = '';
-      $('#ds-key').value = '';
-      $('#ds-preset').value = '';
-      $('#ds-url').value = '';
-      renderDataSources();
-      out.className = 'keyrow__out is-ok';
-      out.textContent = '🟢 انضاف «' + d.name + '» — أفحصه الحين…';
-      testDataSource(d.id);
-    } catch (e) {
+    var sel = $('#ds-preset').value;
+    var custom = sel === 'custom';
+    var key = $('#ds-key').value.trim();
+    var url = $('#ds-url').value.trim();
+
+    /* لو لصق المفتاح في خانة الرابط بالغلط ننقله بدل ما نرمي خطأ في وجهه */
+    if (custom && !key && looksLikeKey(url)) { key = url; url = ''; }
+
+    if (custom && !url) {
       out.className = 'keyrow__out is-bad';
-      var m = String(e && e.message);
-      out.textContent = m === 'NO_URL' ? '🔴 اختر مزوّدًا أو الصق رابط API'
-                      : m === 'BAD_URL' ? '🔴 الرابط لازم يبدأ بـ https://'
-                      : '🔴 ما قدرت أضيفه';
+      out.textContent = looksLikeKey(key)
+        ? '🔴 هذا مفتاح مو رابط. اختر مصدرًا من القائمة فوق، أو الصق رابط الـAPI في الخانة تحت.'
+        : '🔴 الصق رابط الـAPI في الخانة تحت — لازم يبدأ بـ https://';
+      return;
     }
+
+    var p = custom ? null : CS.dataSources.preset(sel);
+    if (p && p.needsKey && !key) {
+      out.className = 'keyrow__out is-bad';
+      out.textContent = '🔴 ' + p.name + ' يحتاج ' + (p.keyLabel || 'مفتاح API') + ' — الصقه فوق.';
+      return;
+    }
+
+    var btn = $('#btn-ds-add');
+    var label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳';
+    out.className = 'keyrow__out is-wait';
+    out.textContent = 'أتحقق منه قبل ما أضيفه…';
+
+    /* نفحصه أولًا ثم نضيفه — عشان يعرف النتيجة قبل ما يدخل القائمة */
+    var draft = {
+      id: '', preset: p ? p.id : '', key: key,
+      url: custom ? url : p.url, enabled: true
+    };
+
+    CS.dataSources.test(draft).then(function (r) {
+      btn.disabled = false;
+      btn.textContent = label;
+
+      var d = CS.dataSources.add({
+        preset: custom ? '' : sel,
+        name:   $('#ds-name').value.trim(),
+        url:    custom ? url : p.url,
+        key:    key
+      });
+      CS.dataSources.update(d.id, { status: r });
+
+      $('#ds-key').value = '';
+      $('#ds-url').value = '';
+      $('#ds-name').value = '';
+      renderDataSources();
+      if (detailCtx) renderExtraData();
+
+      out.className = 'keyrow__out ' + (r.ok === true ? 'is-ok' : r.ok === false ? 'is-bad' : 'is-warn');
+      out.textContent = (r.ok === true ? '🟢 انضاف «' + d.name + '» وشغّال — '
+                       : r.ok === false ? '🟡 انضاف «' + d.name + '» لكن الفحص فشل — '
+                       : '🟡 انضاف «' + d.name + '» وما قدرت أحكم — ') + r.detail;
+    }).catch(function (e) {
+      btn.disabled = false;
+      btn.textContent = label;
+      out.className = 'keyrow__out is-bad';
+      out.textContent = '🔴 ' + (String(e && e.message) === 'BAD_URL'
+        ? 'الرابط لازم يبدأ بـ https://' : (e && e.message) || 'ما قدرت أضيفه');
+    });
   }
 
   function testDataSource(id) {

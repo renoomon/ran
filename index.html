@@ -291,33 +291,34 @@
       <div class="srclist" id="ds-list"></div>
 
       <label class="field">
-        <span class="field__label">رابط الـAPI <em>(الصق أي رابط تبيه)</em></span>
-        <input type="text" id="ds-url" dir="ltr" placeholder="https://api.example.com/movie/{imdb}?api_key={key}">
-        <small class="field__hint">
-          البدائل: <code>{key}</code> <code>{imdb}</code> <code>{tmdb}</code>
-          <code>{type}</code> <code>{title}</code> <code>{year}</code>
-        </small>
+        <span class="field__label">١ · اختر المصدر</span>
+        <select id="ds-preset"></select>
+        <small class="field__hint" id="ds-hint">اختر مصدرًا من القائمة، أو «مصدر خاص فيي» لو عندك رابط API.</small>
       </label>
 
-      <div class="field-row">
-        <label class="field" style="flex:1 1 150px">
-          <span class="field__label">الاسم <em>(اختياري)</em></span>
-          <input type="text" id="ds-name" placeholder="يُستنتج من الرابط">
-        </label>
-        <label class="field" style="flex:1 1 190px">
-          <span class="field__label">تعبئة سريعة <em>(اختياري)</em></span>
-          <select id="ds-preset"></select>
-        </label>
-      </div>
-
       <label class="field">
-        <span class="field__label">مفتاح API <em>(اختياري)</em></span>
+        <span class="field__label">٢ · الصق المفتاح واضغط أضف</span>
         <span class="keyrow">
-          <input type="password" id="ds-key" placeholder="اتركه فاضي لو المصدر ما يحتاج مفتاح" autocomplete="off">
+          <input type="text" id="ds-key" placeholder="الصق مفتاح API هنا" autocomplete="off" spellcheck="false">
           <button type="button" class="keyrow__test" id="btn-ds-add">أضف</button>
         </span>
         <span class="keyrow__out" id="out-ds-add"></span>
       </label>
+
+      <div class="field-row" id="ds-custom" hidden>
+        <label class="field" style="flex:1 1 100%">
+          <span class="field__label">رابط الـAPI <em>(للمصدر الخاص فقط)</em></span>
+          <input type="text" id="ds-url" dir="ltr" placeholder="https://api.example.com/movie/{imdb}?api_key={key}">
+          <small class="field__hint">
+            البدائل: <code>{key}</code> <code>{imdb}</code> <code>{tmdb}</code>
+            <code>{type}</code> <code>{title}</code> <code>{year}</code>
+          </small>
+        </label>
+        <label class="field" style="flex:1 1 100%">
+          <span class="field__label">الاسم <em>(اختياري)</em></span>
+          <input type="text" id="ds-name" placeholder="يُستنتج من الرابط">
+        </label>
+      </div>
     </div>
 
     <footer class="modal__foot">
