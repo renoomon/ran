@@ -78,8 +78,10 @@
   }
 
   /* وسوم المحتوى تُسحب فقط في أقسام الكبار — فيها الفائدة، وتوفّر طلبات */
+  /* الوسوم كانت مقفولة على وضع «adults» — وهو الوضع الافتراضي — فما ظهرت أبدًا.
+     نفتحها لكل أوضاع الكبار ونكتفي بحدّ أعلى للطلبات. */
   function ensureHeat(list, cap) {
-    if (!CS.certs.matureOnly() || CS.certs.currentFilter() === 'adults') return Promise.resolve();
+    if (!CS.certs.matureOnly()) return Promise.resolve();
     var need = (list || []).slice(0, cap || 40).filter(function (it) {
       return it.source === 'tmdb' && CS.certs.cachedHeat(it) === undefined;
     });
@@ -111,8 +113,11 @@
   /* الشارة لازم تكون في كل الصفحات لا في نتائج البحث وحدها.
      الصفحات اللي ما فيها استعلام تعرض تطابق ذوقك — رقم حقيقي من تصويتك. */
   function stampTaste(list) {
+    var v = CS.taste.version ? CS.taste.version() : 0;
     (list || []).forEach(function (it) {
-      if (it && !it.matchPct) it.matchPct = CS.taste.matchPct(it);
+      if (!it || it.matchBasis === 'query' || it.matchBasis === 'related') return;
+      /* التصويت يغيّر ذوقك، فالنسبة لازم تُحسب من جديد لا تتجمّد على أول قيمة */
+      if (it.matchStamp !== v) { it.matchPct = CS.taste.matchPct(it); it.matchStamp = v; }
     });
     return list;
   }
@@ -340,6 +345,9 @@
     pre.then(function () {
       var list = all.filter(function (it) {
         if (CS.certs.currentFilter() === 'all') return CS.certs.passes(it) !== false;
+        /* نتائج ويكيبيديا ما لها تصنيف تُسحب منه، وحذفها يقتل البحث بالوصف
+           نفسه — وهو سبب وجود الموقع. تُعرض معلَّمة «غير مصنّف». */
+        if (it.source === 'wiki') return true;
         return CS.certs.passes(it) === true;
       });
 
@@ -660,8 +668,11 @@
 
       /* الترتيب الحقيقي: الأقرب أولًا لا ما رجّعته الواجهة عشوائيًا */
       related.items.sort(function (a2, b2) { return (b2.relScore || 0) - (a2.relScore || 0); });
-      related.items.forEach(function (it, i) {
-        it.matchPct = Math.max(30, Math.min(99, 99 - i * 2));
+      var topRel = related.items.reduce(function (m, x) { return Math.max(m, x.relScore || 0); }, 1);
+      related.items.forEach(function (it) {
+        it.matchBasis = 'related';
+        it.why = 'related';
+        it.matchPct = Math.max(30, Math.min(96, Math.round((it.relScore / topRel) * 96)));
       });
 
       if (p >= Math.max(r[0].pages, r[1].pages) || (!added && p > 1)) related.exhausted = true;
@@ -800,10 +811,7 @@
       if (token !== detailToken) return;
       personCtx = { p: p, shown: PAGE, token: token };
       remember(p.works);
-      stampTaste(p.works);
-      panel.innerHTML = CS.ui.person(p, personCtx.shown);
-      hydrate(panel, p.works.slice(0, personCtx.shown));
-      window.scrollTo(0, 0);
+      paintPerson(token, true);
     }).catch(function (err) {
       if (token !== detailToken) return;
       panel.innerHTML = '<div class="dt__body"><div class="empty"><b>🔴 ما قدرت أفتح صفحة الشخص</b><p>' +
@@ -814,10 +822,35 @@
   function morePersonWorks() {
     if (!personCtx) return;
     personCtx.shown += PAGE;
-    stampTaste(personCtx.p.works);
-    var panel = $('#person-panel');
-    panel.innerHTML = CS.ui.person(personCtx.p, personCtx.shown);
-    hydrate(panel, personCtx.p.works.slice(0, personCtx.shown));
+    paintPerson(personCtx.token, false);
+  }
+
+  /**
+   * صفحة الممثل كانت السطح الوحيد اللي ما يمر عليه فلتر التصنيف إطلاقًا،
+   * فتعرض أعمالًا غير بالغين ووضع الكبار شغّال. الحين تُفلتر مثل غيرها،
+   * وعدد الأعمال المكتوب يعدّ المعروض لا الكل عشان ما يكذب.
+   */
+  function paintPerson(token, scroll) {
+    if (!personCtx || token !== detailToken) return;
+    var p = personCtx.p;
+    var mature = CS.certs.matureOnly();
+    var pre = mature ? ensureCerts(p.works, 300) : Promise.resolve();
+
+    pre.then(function () {
+      if (token !== detailToken) return;
+      var works = mature
+        ? p.works.filter(function (it) { return CS.certs.passes(it) === true; })
+        : p.works;
+
+      stampTaste(works);
+      var view = { name: p.name, photo: p.photo, job: p.job, birthday: p.birthday,
+                   place: p.place, bio: p.bio, works: works };
+      var panel = $('#person-panel');
+      if (!panel) return;
+      panel.innerHTML = CS.ui.person(view, personCtx.shown);
+      hydrate(panel, works.slice(0, personCtx.shown));
+      if (scroll) window.scrollTo(0, 0);
+    });
   }
 
   /* ============================================================
@@ -852,6 +885,11 @@
     document.body.classList.remove('is-locked');
   }
 
+  /* هل الفلتر المخزّن يطابق اللي تفرضه إعداداتك الحالية؟ */
+  function filterStale() {
+    return CS.certs.currentFilter() !== certFor(currentTab());
+  }
+
   function rerenderCurrent() {
     var r = parseHash();
     if (r.name === 'detail') { openDetail(r.type, r.id); return; }
@@ -875,6 +913,9 @@
     CS.store.set(CS.KEYS.autoTr, $('#set-autotr').checked);
     setAdultOnly($('#set-adultonly').checked);
     CS.store.set(CS.KEYS.adultLevel, $('#set-adultlevel').value);
+    /* الفلتر كان مخزّنًا ويُكتب في startFeed وحدها، فتغييره من الإعدادات
+       ما يوصل صفحة العمل ولا الممثل ولا النتائج إلا بعد ما ترجع للرئيسية */
+    CS.store.set(CS.KEYS.certTier, certFor(currentTab()));
     $('#lang-label').textContent = CS.state.lang === 'ar' ? 'ع' : 'EN';
 
     var mail = $('#tr-email').value.trim();

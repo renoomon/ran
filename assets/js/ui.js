@@ -49,6 +49,12 @@
 
   function certBadge(item) {
     var info = CS.certs.cachedFor(item);
+    /* نتيجة من ويكيبيديا ما لها معرّف TMDB فما لها تصنيف — نقولها بصراحة
+       بدل ما نعرضها كأنها مصنّفة أو نخفيها بلا سبب */
+    if (!info && item.source === 'wiki') {
+      return '<span class="card__cert card__cert--unknown" ' +
+        'title="نتيجة من ويكيبيديا بلا مقابل في TMDB — تصنيفها العمري غير معروف">؟ غير مصنّف</span>';
+    }
     if (!info) return '';
     var t = CS.certs.tierInfo(info.tier);
     var text = info.tier === 5 ? '🔥 إباحي' : (t.emoji + ' ' + t.short);

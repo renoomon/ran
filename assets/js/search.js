@@ -131,27 +131,76 @@
     });
   }
 
+  /**
+   * يبني عنصرًا من صفحة ويكيبيديا ما لقينا لها مقابلًا في TMDB.
+   * كانت هذي الدالة تُستدعى في ثلاثة مواضع وهي غير معرّفة أصلًا، فترمي
+   * ReferenceError يبتلعه catch في آخر enginePlot — فيرجع المحرّك [] كاملًا.
+   * يعني: أي بحث بالوصف تفشل فيه نتيجة واحدة في المطابقة كان يخسر
+   * نتائج القصة كلها. وهذي بالضبط الأعمال النادرة اللي البحث بالوصف موجود لها.
+   */
+  function fromWiki(w) {
+    return {
+      id: 'w' + (w.wikiPageId || 0),
+      type: w.type === 'tv' ? 'tv' : 'movie',
+      title: w.cleanTitle || w.wikiTitle || '',
+      originalTitle: '',
+      year: w.year || null,
+      poster: w.thumb || '',
+      posterLarge: w.thumb || '',
+      backdrop: '',
+      rating: 0,
+      votes: 0,
+      popularity: 0,
+      overview: w.description || (w.extract || '').slice(0, 300),
+      plotSnippet: w.extract || '',
+      genreIds: [],
+      adult: false,
+      source: 'wiki',
+      wikiPageId: w.wikiPageId,
+      wikiTitle: w.wikiTitle,
+      wikiLang: w.wikiLang,
+      wikiUrl: w.wikiUrl
+    };
+  }
+
   /* ---------- محرك 2: بوصف القصة ---------- */
 
   function enginePlot(q, qEn, asTitle) {
-    var jobs = [CS.wiki.findWorks('ar', q, LIM.wikiSearch)];
-    var english = qEn || (!CS.util.isArabic(q) ? q : '');
+    /* الويكي العربية كانت تُستدعى حتى للاستعلام الإنجليزي الصرف، وتأخذ
+       أفضلية رتبة على الإنجليزية — فيتقدّم ضجيج عربي على نتيجة صحيحة.
+       نستدعي كل ويكي بلغتها فقط، وبلا أفضلية لأي منهما. */
+    var isAr = CS.util.isArabic(q);
+    var english = qEn || (!isAr ? q : '');
+    var jobs = [];
+    if (isAr) jobs.push(CS.wiki.findWorks('ar', q, LIM.wikiSearch));
     if (english) jobs.push(CS.wiki.findWorks('en', english, LIM.wikiSearch));
+    if (!jobs.length) jobs.push(CS.wiki.findWorks('ar', q, LIM.wikiSearch));
 
     return Promise.all(jobs).then(function (sets) {
       /* دمج نتائج الويكيين قبل المطابقة */
       var seen = {}, works = [];
-      sets.forEach(function (set, si) {
+      sets.forEach(function (set) {
         set.forEach(function (w) {
           var k = norm(w.cleanTitle) + '|' + (w.year || '');
-          if (seen[k]) { seen[k].rank = Math.min(seen[k].rank, w.rank + si * 0.5); return; }
-          w.rank = w.rank + si * 0.5;
+          if (seen[k]) { seen[k].rank = Math.min(seen[k].rank, w.rank); return; }
           seen[k] = w;
           works.push(w);
         });
       });
       works.sort(function (a, b) { return a.rank - b.rank; });
       works = works.slice(0, LIM.wikiResolve);
+
+      /* كم من كلمات وصفك موجودة فعلًا في مقتطف ويكيبيديا؟
+         المقتطف يجي مع البحث بلا تكلفة، وكان يُرمى — والترتيب كان
+         يعتمد على موقع النتيجة في ويكيبيديا وحده بلا أي مقارنة بالنص. */
+      var terms = contentWords(english || q);
+      function coverage(w) {
+        if (!terms.length) return 0;
+        var hay = ((w.snippet || '') + ' ' + (w.description || '') + ' ' +
+                   (w.extract || '').slice(0, 600)).toLowerCase();
+        var hit = terms.filter(function (t) { return hay.indexOf(t.toLowerCase()) !== -1; }).length;
+        return hit / terms.length;
+      }
 
       /* على بحث بالاسم نصنّف النتيجة كمطابقة عنوان لا كمطابقة قصة */
       function label(w, resolved) {
@@ -170,7 +219,7 @@
           var item = fromWiki(w);
           item.why = asTitle ? 'title' : 'plot';
           item.whyText = label(w, false);
-          item.engineScore = 66 - w.rank * 2.2 + bonus(w, item);
+          item.engineScore = 52 - w.rank * 1.1 + coverage(w) * 46 + bonus(w, item);
           return item;
         });
       }
@@ -183,7 +232,7 @@
             var fb = fromWiki(w);
             fb.why = asTitle ? 'title' : 'plot';
             fb.whyText = label(w, false);
-            fb.engineScore = 52 - w.rank * 2.2 + bonus(w, fb);
+            fb.engineScore = 40 - w.rank * 1.1 + coverage(w) * 46 + bonus(w, fb);
             return fb;
           }
           best.why = asTitle ? 'title' : 'plot';
@@ -192,7 +241,7 @@
           best.wikiTitle = w.wikiTitle;
           best.wikiLang = w.wikiLang;
           best.plotSnippet = w.extract;
-          best.engineScore = 74 - w.rank * 2.2 + bonus(w, best);
+          best.engineScore = 58 - w.rank * 1.1 + coverage(w) * 52 + bonus(w, best);
           return best;
         });
       });
@@ -336,15 +385,24 @@
           return;
         }
 
-        item.score = item.engineScore || 0;
-        item.engines = [item.why];
+        /* merge() تُنادى مرتين (مرة للمحرّكات ومرة مع الأعمال القريبة).
+           كانت تصفّر score وengines في النداء الثاني فتضيع كل مكافآت
+           التقاطع بين المحرّكات — العمل اللي لقيه محرّكان ينزل لآخر القائمة.
+           الحين ما نصفّر إلا أول مرة نشوف فيها العنصر. */
+        if (item.merged !== true) {
+          item.score = item.engineScore || 0;
+          item.engines = [item.why];
+          item.merged = true;
+        }
         byKey[key] = item;
         order.push(item);
       });
     });
 
-    /* مكافآت الجودة */
+    /* مكافآت الجودة — مرة واحدة لكل عنصر مهما تكرّر الدمج */
     order.forEach(function (item) {
+      if (item.qualityScored) return;
+      item.qualityScored = true;
       item.score += Math.min(11, Math.log10((item.popularity || 0) + 1) * 5.5);
       if (item.votes > 120) item.score += Math.min(6, (item.rating || 0) * .65);
       if (!item.poster) item.score -= 9;
@@ -353,10 +411,18 @@
       if ((item.titleSim || 0) >= .85) item.score += 40;
     });
 
-    /* نسبة تطابق مفهومة للمستخدم — مشتقة من الدرجة نفسها */
+    /* النسبة كانت رتبة لا ثقة: الأول يقرأ ٩٩٪ دائمًا حتى لو النتيجة ضعيفة.
+       الآن سقف مطلق يعتمد على قوة الدليل نفسه — تقاطع محرّكات وتطابق عنوان. */
     var top = order.reduce(function (m, x) { return Math.max(m, x.score || 0); }, 1);
     order.forEach(function (item) {
-      item.matchPct = Math.max(30, Math.min(99, Math.round((item.score / top) * 99)));
+      var rel = (item.score / top) * 99;
+      var cap = (item.titleSim || 0) >= .85 ? 99
+              : (item.engines || []).length > 1 ? 92
+              : (item.hits && item.hits.length > 1) ? 88
+              : item.why === 'plot' ? 78
+              : 70;
+      item.matchBasis = 'query';
+      item.matchPct = Math.max(25, Math.min(cap, Math.round(rel)));
     });
 
     order.sort(function (a, b) { return b.score - a.score; });

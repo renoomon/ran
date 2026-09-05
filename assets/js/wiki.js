@@ -87,8 +87,15 @@
   }
 
   /* أي نوع هذي الصفحة؟ فيلم / مسلسل / لا شي */
+  /* مقالات موضوعية وقوائم كانت تدخل كأنها أعمال: «Nudity in film» و«قائمة أفلام…» */
+  var RE_TOPIC = /^(list of|lists of|outline of|index of|glossary of|history of|قائمة |قوائم |تاريخ )/i;
+  var RE_TOPIC_IN = /\b(in film|in cinema|in television|in video games|filmography)\b|^(cinema|film|television) of /i;
+
   function classify(page) {
-    var probe = (page.description || '') + ' ' + (page.title || '') + ' ' + (page.extract || '').slice(0, 320);
+    var title = page.title || '';
+    if (RE_TOPIC.test(title) || RE_TOPIC_IN.test(title)) return null;
+
+    var probe = (page.description || '') + ' ' + title + ' ' + (page.extract || '').slice(0, 320);
     if (!RE_EITHER.test(probe)) return null;
     if (RE_TV.test(page.description) || RE_TV.test(page.title)) return 'tv';
     if (RE_MOVIE.test(page.description) || RE_MOVIE.test(page.title)) return 'movie';
@@ -102,8 +109,8 @@
     return searchPages(lang, query, limit).then(function (hits) {
       if (!hits.length) return [];
       var ids = hits.map(function (h) { return h.pageid; });
-      var order = {};
-      hits.forEach(function (h, i) { order[h.pageid] = i; });
+      var order = {}, snip = {};
+      hits.forEach(function (h, i) { order[h.pageid] = i; snip[h.pageid] = h.snippet || ''; });
 
       return pageDetails(lang, ids).then(function (pages) {
         return pages
@@ -120,6 +127,8 @@
               year: CS.util.yearFrom(p.description) || CS.util.yearFrom(p.title) || CS.util.yearFrom(p.extract.slice(0, 200)),
               description: p.description,
               extract: p.extract,
+              /* مقتطف البحث هو دليل المطابقة الوحيد اللي ترجّعه ويكيبيديا — نحتفظ فيه */
+              snippet: snip[p.pageid] || '',
               thumb: p.thumb,
               rank: order[p.pageid] == null ? 99 : order[p.pageid]
             };

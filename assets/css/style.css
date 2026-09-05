@@ -648,3 +648,4 @@ a.tag:hover{ border-color:rgba(255,122,47,.6); color:var(--hot); }
 .mrow__alt{ grid-column:1 / -1; font-size:.72rem; font-style:normal; color:#fcd34d; }
 .dt__logo{ max-height:clamp(56px,9vw,120px); max-width:min(100%,520px); width:auto; display:block;
   margin-inline-start:auto; filter:drop-shadow(0 4px 18px rgba(0,0,0,.6)); }
+.card__cert--unknown{ border-color:rgba(148,163,184,.4)!important; color:#94a3b8!important; }

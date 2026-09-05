@@ -250,9 +250,12 @@
     var f = FILTERS[key];
     var info = cachedFor(item);
 
-    /* الإباحي: يظهر فقط لو الفلتر يطلب المستوى ٥ والموافقة محفوظة */
-    /* العمل المعلَّم adult يظهر في أي قسم كبار مفتوح، لا في المستوى ٥ وحده */
-    if (item && item.adult) return !!f.needsAdult && adultAllowed();
+    /* العمل المعلَّم adult في TMDB مستواه ٥ — كان يتخطّى حدود الفلتر
+       كليًا فيدخل قسم الأفلام العادي في أي وضع كبار. الآن يخضع للحدود
+       مثل غيره، فما يظهر إلا في قسم يطلب المستوى ٥ فعلًا. */
+    if (item && item.adult) {
+      return !!f.needsAdult && adultAllowed() && f.max >= 5;
+    }
 
     if (key === 'all') return true;
     if (info === undefined) return null;          /* التصنيف لسه ما وصل */

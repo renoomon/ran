@@ -252,8 +252,15 @@
     return Math.max(20, Math.min(99, Math.round(score)));
   }
 
+  /* بصمة الذوق — تتغيّر مع كل تصويت فتُعاد النسب بدل ما تتجمّد */
+  function version() {
+    var t = load();
+    return (t.likes.length * 1000) + t.dislikes.length;
+  }
+
   CS.taste = {
     matchPct: matchPct,
+    version: version,
     verdict: verdict,
     merge: merge,
     set: set,
