@@ -745,9 +745,6 @@
 
   function openSettings() {
     $('#api-key').value    = CS.state.userKey || '';
-    $('#omdb-key').value   = CS.store.get(CS.KEYS.omdbKey, '') || '';
-    $('#fanart-key').value = CS.store.get(CS.KEYS.fanartKey, '') || '';
-    $('#trakt-key').value  = CS.store.get(CS.KEYS.traktKey, '') || '';
     $('#tr-email').value   = CS.store.get(CS.KEYS.email, '') || '';
     $('#set-lang').value   = CS.state.lang;
     $('#set-region').value = CS.state.region;
@@ -795,11 +792,8 @@
     setAdultOnly($('#set-adultonly').checked);
     $('#lang-label').textContent = CS.state.lang === 'ar' ? 'ع' : 'EN';
 
-    [['#omdb-key', CS.KEYS.omdbKey], ['#fanart-key', CS.KEYS.fanartKey],
-     ['#trakt-key', CS.KEYS.traktKey], ['#tr-email', CS.KEYS.email]].forEach(function (pair) {
-      var v = $(pair[0]).value.trim();
-      if (v) CS.store.set(pair[1], v); else CS.store.remove(pair[1]);
-    });
+    var mail = $('#tr-email').value.trim();
+    if (mail) CS.store.set(CS.KEYS.email, mail); else CS.store.remove(CS.KEYS.email);
 
     if (!key) {
       CS.state.userKey = '';
@@ -897,43 +891,6 @@
       });
     },
 
-    'omdb-key': function (v) {
-      if (!v) return Promise.resolve({ ok: null, detail: 'فاضي — الموقع يشتغل بدونه، بس بدون تقييمات IMDb وروتن توميتوز' });
-      return fetch('https://www.omdbapi.com/?apikey=' + encodeURIComponent(v) + '&i=tt1375666')
-        .then(function (r) { return r.json(); })
-        .then(function (j) {
-          if (j && j.Response === 'True') return { ok: true, detail: 'شغّال — رجّع «' + (j.Title || '') + '»' };
-          return { ok: false, detail: (j && j.Error) || 'المفتاح مرفوض' };
-        })
-        .catch(netFail);
-    },
-
-    'fanart-key': function (v) {
-      if (!v) return Promise.resolve({ ok: null, detail: 'فاضي — البوسترات بتجي من TMDB عادي' });
-      return fetch('https://webservice.fanart.tv/v3/movies/27205?api_key=' + encodeURIComponent(v))
-        .then(function (r) {
-          if (r.status === 401 || r.status === 403) return { ok: false, detail: 'المفتاح مرفوض (' + r.status + ')' };
-          if (!r.ok) return { ok: false, detail: 'الخادم رد بخطأ ' + r.status };
-          return r.json().then(function (j) {
-            return { ok: true, detail: 'شغّال — رجّع ' + (Object.keys(j || {}).length) + ' حقلًا' };
-          });
-        })
-        .catch(netFail);
-    },
-
-    'trakt-key': function (v) {
-      if (!v) return Promise.resolve({ ok: null, detail: 'فاضي — روابط Trakt بتشتغل بالبحث بدون مفتاح' });
-      return fetch('https://api.trakt.tv/movies/inception', {
-        headers: { 'trakt-api-version': '2', 'trakt-api-key': v, 'content-type': 'application/json' }
-      }).then(function (r) {
-        if (r.status === 401 || r.status === 403) return { ok: false, detail: 'المفتاح مرفوض (' + r.status + ')' };
-        if (!r.ok) return { ok: false, detail: 'الخادم رد بخطأ ' + r.status };
-        return r.json().then(function (j) {
-          return { ok: true, detail: 'شغّال — رجّع «' + ((j && j.title) || '') + '»' };
-        });
-      }).catch(netFail);
-    },
-
     'tr-email': function (v) {
       if (!v) return Promise.resolve({ ok: null, detail: 'فاضي — الترجمة شغّالة بحد ٥ آلاف حرف يوميًا' });
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return Promise.resolve({ ok: false, detail: 'صيغة البريد غير صحيحة' });
@@ -992,7 +949,7 @@
   function fillPresets() {
     var sel = $('#ds-preset');
     if (sel.options.length) return;
-    sel.add(new Option('— مخصّص (ألصق رابطي) —', ''));
+    sel.add(new Option('— بدون · أكتب رابطي —', ''));
     CS.dataSources.PRESETS.forEach(function (p) {
       sel.add(new Option(p.name + ' — ' + p.hint, p.id));
     });
@@ -1000,7 +957,8 @@
 
   function onPresetPick() {
     var p = CS.dataSources.preset($('#ds-preset').value);
-    if (!p) { $('#ds-url').value = ''; $('#ds-name').placeholder = 'يُستنتج من الرابط'; $('#ds-key').placeholder = 'لو المزوّد يحتاج مفتاح'; return; }
+    if (!p) { $('#ds-name').placeholder = 'يُستنتج من الرابط';
+              $('#ds-key').placeholder = 'اتركه فاضي لو المصدر ما يحتاج مفتاح'; return; }
     $('#ds-url').value = p.url;
     $('#ds-name').placeholder = p.name;
     $('#ds-key').placeholder = p.needsKey ? (p.keyLabel || 'مفتاح API') : 'ما يحتاج مفتاح';
@@ -1023,7 +981,8 @@
 
     if (!list.length) {
       box.innerHTML = '<div class="empty" style="padding:1.2rem">' +
-        '<b>⚪ ما فيه مصادر بيانات مضافة</b><p>اختر مزوّدًا من القائمة تحت أو الصق رابط API.</p></div>';
+        '<b>⚪ ما فيه مصادر</b><p>الصق رابط API تحت واضغط «أضف» — أو استعمل «تعبئة سريعة» ' +
+        'لو تبي مزوّدًا جاهزًا.</p></div>';
       return;
     }
 
@@ -1032,6 +991,7 @@
         '<div class="srcitem__top">' +
           '<b class="srcitem__name">' + esc0(d.name) + '</b>' +
           '<span class="srcitem__type">' + esc0(d.key ? 'بمفتاح' : 'بدون مفتاح') + '</span>' +
+          (d.enabled ? '' : '<span class="srcitem__type is-off">موقوف</span>') +
         '</div>' +
         '<code class="srcitem__url" dir="ltr">' + esc0(hideKey(d)) + '</code>' +
         statusLine(d) +
@@ -1520,6 +1480,25 @@
       if (moved) setTimeout(function () { CS.ui.toast('👍 نقلت ' + moved + ' من مفضلتك القديمة'); }, 900);
     });
     step(fillPresets);
+    step(function () {
+      /* المفاتيح القديمة كانت خانات ثابتة ما يقدر يوقّفها ولا يحذفها.
+         ننقلها لقائمة مصادره الموحّدة مرة وحدة فتصير تحت تحكّمه.
+         العلَم يضمن إنها ما ترجع لو حذفها بعد النقل. */
+      if (CS.store.get(CS.KEYS.dsMigrated, false) === true) return;
+      CS.store.set(CS.KEYS.dsMigrated, true);
+
+      var moved = CS.dataSources.migrate({
+        omdb:   CS.store.get(CS.KEYS.omdbKey, ''),
+        fanart: CS.store.get(CS.KEYS.fanartKey, ''),
+        trakt:  CS.store.get(CS.KEYS.traktKey, '')
+      });
+      if (moved) {
+        [CS.KEYS.omdbKey, CS.KEYS.fanartKey, CS.KEYS.traktKey].forEach(function (k) { CS.store.remove(k); });
+        setTimeout(function () {
+          CS.ui.toast('🟢 نقلت ' + moved + ' من مفاتيحك لقائمة مصادرك — تقدر توقّفها أو تحذفها');
+        }, 1400);
+      }
+    });
     step(updateLikeCount);
     step(refreshKeyNotice);
     step(watchSentinels);

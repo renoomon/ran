@@ -645,3 +645,4 @@ main{ max-width:1560px; margin-inline:auto; padding:clamp(1rem, 2.5vw, 1.8rem) c
 .keyrow__out.is-warn{ color:#fcd34d; }
 .prov__credit{ font-size:.72rem; color:var(--text-3); margin:.5rem 0 0; }
 .prov__credit a{ color:var(--text-2); }
+.srcitem__type.is-off{ color:#fcd34d; border-color:rgba(252,211,77,.4); }

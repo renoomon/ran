@@ -80,7 +80,11 @@
      ============================================================ */
 
   var omdb = {
-    key: function () { return CS.store.get(CS.KEYS.omdbKey, '') || ''; },
+    /* المفتاح صار يجي من قائمة مصادر البيانات الموحّدة — والخانة القديمة احتياط */
+    key: function () {
+      var fromList = CS.dataSources && CS.dataSources.keyFor ? CS.dataSources.keyFor('omdb') : '';
+      return fromList || CS.store.get(CS.KEYS.omdbKey, '') || '';
+    },
 
     byImdb: function (imdbId) {
       var k = omdb.key();

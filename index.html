@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://image.tmdb.org">
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/style.css?v=3.3.0">
+<link rel="stylesheet" href="assets/css/style.css?v=3.4.0">
 </head>
 <body>
 
@@ -269,33 +269,6 @@
       </label>
 
       <label class="field">
-        <span class="field__label">مفتاح OMDb <em>(مجاني)</em></span>
-        <span class="keyrow"><input type="password" id="omdb-key" placeholder="تقييمات IMDb وروتن توميتوز" autocomplete="off" spellcheck="false"><button type="button" class="keyrow__test" data-test-key="omdb-key">تحقق</button></span><span class="keyrow__out" id="out-omdb-key"></span>
-        <small class="field__hint">
-          <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener">omdbapi.com</a> — ١٠٠٠ طلب باليوم.
-          يضيف تقييم IMDb ونسبة Rotten Tomatoes وميتاكريتك والجوائز وشبّاك التذاكر.
-        </small>
-      </label>
-
-      <label class="field">
-        <span class="field__label">مفتاح Fanart.tv <em>(مجاني)</em></span>
-        <span class="keyrow"><input type="password" id="fanart-key" placeholder="بوسترات وشعارات بدقة عالية" autocomplete="off" spellcheck="false"><button type="button" class="keyrow__test" data-test-key="fanart-key">تحقق</button></span><span class="keyrow__out" id="out-fanart-key"></span>
-        <small class="field__hint">
-          <a href="https://fanart.tv/get-an-api-key/" target="_blank" rel="noopener">fanart.tv</a> —
-          يضيف شعار العمل وخلفيات بدقة أعلى من TMDB.
-        </small>
-      </label>
-
-      <label class="field">
-        <span class="field__label">Trakt Client ID <em>(مجاني)</em></span>
-        <span class="keyrow"><input type="password" id="trakt-key" placeholder="إحصاءات المشاهدة والقوائم" autocomplete="off" spellcheck="false"><button type="button" class="keyrow__test" data-test-key="trakt-key">تحقق</button></span><span class="keyrow__out" id="out-trakt-key"></span>
-        <small class="field__hint">
-          <a href="https://trakt.tv/oauth/applications" target="_blank" rel="noopener">trakt.tv</a> —
-          يضيف عدد المشاهدات وترتيب الشعبية الأسبوعي.
-        </small>
-      </label>
-
-      <label class="field">
         <span class="field__label">بريدك لرفع حد الترجمة <em>(اختياري)</em></span>
         <span class="keyrow"><input type="email" id="tr-email" placeholder="name@example.com" autocomplete="off" spellcheck="false"><button type="button" class="keyrow__test" data-test-key="tr-email">تحقق</button></span><span class="keyrow__out" id="out-tr-email"></span>
         <small class="field__hint">
@@ -305,31 +278,20 @@
       </label>
 
       <p class="field__hint">
-        🟢 <b>مصادر شغّالة بدون أي مفتاح:</b> ويكيبيديا (بحث القصة) · Wikidata (روابط مباشرة) ·
-        TVmaze (مواعيد الحلقات) · MyMemory (الترجمة).
+        🟢 <b>شغّالة بدون أي مفتاح:</b> ويكيبيديا (بحث القصة) · Wikidata (روابط مباشرة) ·
+        MyMemory (الترجمة).
       </p>
 
-      <h3 class="modal__sec">أضف مصادر بيانات بنفسك</h3>
+      <h3 class="modal__sec">مصادرك</h3>
       <p class="field__hint">
-        📊 تختار مزوّدًا جاهزًا أو تلصق رابط API بنفسك، والموقع ينادي كل مصدر لكل عمل
-        ويعرض اللي رجّعه تحت «بيانات إضافية» في صفحة العمل. كل مصدر له زر تحقق مستقل.
+        📊 كل مصدر هنا تحت تحكّمك: <b>شغّله · وقّفه · احذفه · تحقق منه</b> — بلا استئذان.
+        الموقع ينادي المفعّل منها لكل عمل ويعرض اللي رجّعه تحت «بيانات إضافية» في صفحة العمل.
       </p>
 
       <div class="srclist" id="ds-list"></div>
 
-      <div class="field-row">
-        <label class="field" style="flex:1 1 190px">
-          <span class="field__label">المزوّد</span>
-          <select id="ds-preset"></select>
-        </label>
-        <label class="field" style="flex:1 1 150px">
-          <span class="field__label">الاسم</span>
-          <input type="text" id="ds-name" placeholder="يُستنتج من الرابط">
-        </label>
-      </div>
-
       <label class="field">
-        <span class="field__label">رابط الـAPI</span>
+        <span class="field__label">رابط الـAPI <em>(الصق أي رابط تبيه)</em></span>
         <input type="text" id="ds-url" dir="ltr" placeholder="https://api.example.com/movie/{imdb}?api_key={key}">
         <small class="field__hint">
           البدائل: <code>{key}</code> <code>{imdb}</code> <code>{tmdb}</code>
@@ -337,10 +299,21 @@
         </small>
       </label>
 
+      <div class="field-row">
+        <label class="field" style="flex:1 1 150px">
+          <span class="field__label">الاسم <em>(اختياري)</em></span>
+          <input type="text" id="ds-name" placeholder="يُستنتج من الرابط">
+        </label>
+        <label class="field" style="flex:1 1 190px">
+          <span class="field__label">تعبئة سريعة <em>(اختياري)</em></span>
+          <select id="ds-preset"></select>
+        </label>
+      </div>
+
       <label class="field">
         <span class="field__label">مفتاح API <em>(اختياري)</em></span>
         <span class="keyrow">
-          <input type="password" id="ds-key" placeholder="لو المزوّد يحتاج مفتاح" autocomplete="off">
+          <input type="password" id="ds-key" placeholder="اتركه فاضي لو المصدر ما يحتاج مفتاح" autocomplete="off">
           <button type="button" class="keyrow__test" id="btn-ds-add">أضف</button>
         </span>
         <span class="keyrow__out" id="out-ds-add"></span>
@@ -358,17 +331,17 @@
 
 <div class="toast" id="toast" hidden></div>
 
-<script src="assets/js/config.js?v=3.3.0"></script>
-<script src="assets/js/taste.js?v=3.3.0"></script>
-<script src="assets/js/certs.js?v=3.3.0"></script>
-<script src="assets/js/tmdb.js?v=3.3.0"></script>
-<script src="assets/js/wiki.js?v=3.3.0"></script>
-<script src="assets/js/sources.js?v=3.3.0"></script>
-<script src="assets/js/datasources.js?v=3.3.0"></script>
-<script src="assets/js/links.js?v=3.3.0"></script>
-<script src="assets/js/feed.js?v=3.3.0"></script>
-<script src="assets/js/search.js?v=3.3.0"></script>
-<script src="assets/js/ui.js?v=3.3.0"></script>
-<script src="assets/js/app.js?v=3.3.0"></script>
+<script src="assets/js/config.js?v=3.4.0"></script>
+<script src="assets/js/taste.js?v=3.4.0"></script>
+<script src="assets/js/certs.js?v=3.4.0"></script>
+<script src="assets/js/tmdb.js?v=3.4.0"></script>
+<script src="assets/js/wiki.js?v=3.4.0"></script>
+<script src="assets/js/sources.js?v=3.4.0"></script>
+<script src="assets/js/datasources.js?v=3.4.0"></script>
+<script src="assets/js/links.js?v=3.4.0"></script>
+<script src="assets/js/feed.js?v=3.4.0"></script>
+<script src="assets/js/search.js?v=3.4.0"></script>
+<script src="assets/js/ui.js?v=3.4.0"></script>
+<script src="assets/js/app.js?v=3.4.0"></script>
 </body>
 </html>

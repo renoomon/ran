@@ -383,7 +383,42 @@
     return res;
   }
 
+  /* مفتاح مزوّد معيّن من القائمة — يستخدمه sources.js بدل الخانات الثابتة القديمة */
+  function keyFor(presetId) {
+    var hit = all().filter(function (d) { return d.enabled && d.preset === presetId && d.key; })[0];
+    return hit ? hit.key : '';
+  }
+
+  /* هل المزوّد مضاف ومفعّل؟ */
+  function isOn(presetId) {
+    return all().some(function (d) { return d.enabled && d.preset === presetId; });
+  }
+
+  /* ينقل المفاتيح القديمة الثابتة إلى القائمة الموحّدة — مرة وحدة */
+  function migrate(legacy) {
+    var list = all();
+    var added = 0;
+    Object.keys(legacy).forEach(function (pid) {
+      var key = legacy[pid];
+      if (!key) return;
+      if (list.some(function (d) { return d.preset === pid; })) return;
+      var p = preset(pid);
+      if (!p) return;
+      list.push({
+        id: 'd' + (Date.now() + added) + Math.floor(Math.random() * 1000),
+        preset: pid, name: p.name, url: p.url, key: key,
+        enabled: true, status: null, addedAt: Date.now()
+      });
+      added++;
+    });
+    if (added) save(list);
+    return added;
+  }
+
   CS.dataSources = {
+    keyFor: keyFor,
+    isOn: isOn,
+    migrate: migrate,
     PRESETS: PRESETS,
     preset: preset,
     all: all,
