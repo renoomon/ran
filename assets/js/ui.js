@@ -414,21 +414,36 @@
         esc(missing.join(' و')) + '، وما هو متوفر لهذا العمل.</div>';
 
     } else if (active.type === 'site') {
-      /* موقع كامل: نحاول نعرض نتيجة بحثه داخل الصفحة، والزر دائمًا موجود.
-         المتصفح ما يخلّينا نعرف مسبقًا هل الموقع يسمح بالعرض داخل الصفحة،
-         فبدل ما نخمّن نحط الاثنين ونقول للمستخدم وش يسوي لو الإطار طلع فاضي. */
+      /* موقع كامل: نعرض نتيجة بحثه داخل الصفحة، والزر دائمًا موجود.
+         وما نطلب من المستخدم يعرف «نمط البحث» — نعطيه كل الاحتمالات أزرارًا،
+         يضغط لين تظهر النتائج، واختياره ينحفظ فما يعيدها مرة ثانية. */
       var term = CS.mySources.searchTerm(item);
-      var openBtn = '<a class="btn" target="_blank" rel="noopener noreferrer" href="' + esc(url) + '">' +
-        '🔎 افتح البحث عن «' + esc(term) + '» في ' + esc(active.name) + '</a>';
+      var opts = CS.mySources.optionsFor(active, item);
+      var cur = active.pattern || (active.tpl ? 'custom' : 's');
 
+      /* المستخدم ما يحتاج يعرف «?s=» ولا «MacCMS» — أرقام وأسماء محركات،
+         والتفصيل التقني يظهر لو وقف على الزر */
+      var n = 0;
+      var tries = '<div class="tryrow"><span class="tryrow__lbl">ما ظهرت النتائج؟ اضغط:</span>' +
+        opts.map(function (o) {
+          var label = o.engine ? o.label : 'طريقة ' + (++n);
+          return '<button class="tryrow__b' + (o.id === cur ? ' is-on' : '') +
+            (o.engine ? ' is-eng' : '') + '" data-watch-pattern="' + esc(o.id) +
+            '" title="' + esc(o.label) + ' — ' + esc(o.url) + '">' + esc(label) + '</button>';
+        }).join('') + '</div>';
+
+      /* الأزرار فوق الإطار: هي اللي يحتاجها لو ما ظهرت النتائج،
+         وتحت إطار بطول ١٦:٩ كانت تنزل تحت حدود الشاشة فما يشوفها */
       body =
-        '<div class="watch__frame"><iframe src="' + esc(url) +
+        '<div class="watch__bar"><a class="btn" target="_blank" rel="noopener noreferrer" href="' +
+          esc(url) + '">↗ افتحه في تبويب جديد</a></div>' +
+        tries +
+        '<div class="watch__note">🟢 الأزرار المنقّطة (جوجل · بينج · دك دك جو · ياندكس) تشتغل مع ' +
+        'أي موقع مهما كان — تبحث داخل ' + esc(active.name) + ' نفسه عن «' + esc(term) + '».</div>' +
+        '<div class="watch__frame is-page"><iframe src="' + esc(url) +
         '" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture; fullscreen" ' +
         'referrerpolicy="strict-origin-when-cross-origin" loading="lazy" ' +
-        'title="بحث ' + esc(term) + ' في ' + esc(active.name) + '"></iframe></div>' +
-        '<div class="watch__bar">' + openBtn + '</div>' +
-        '<div class="watch__note">🟡 طلع الإطار فوق فاضي؟ يعني ' + esc(active.name) +
-        ' يمنع العرض داخل صفحات ثانية — استخدم الزر وبيفتح على نتيجة البحث مباشرة.</div>';
+        'title="بحث ' + esc(term) + ' في ' + esc(active.name) + '"></iframe></div>';
 
     } else if (active.type === 'video') {
       /* ملف مباشر: <video> يشغّله بلا CORS. HLS يُحمَّل له مشغّل وقت التشغيل. */

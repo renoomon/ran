@@ -50,9 +50,57 @@
     { id: 'drupal',  label: 'دروبال /search/node',         tpl: '{origin}/search/node?keys={title}' }
   ];
 
+  /* محركات البحث محصورة داخل نطاق الموقع.
+     هذي تشتغل مع أي موقع مهما كان نمط بحثه — لأن المحرك مفهرسه أصلًا،
+     فهي شبكة الأمان لما ما نعرف نمط الموقع. */
+  var ENGINES = [
+    { id: 'g-google', label: 'جوجل', engine: true,
+      tpl: 'https://www.google.com/search?q=site%3A{host}+{title}' },
+    { id: 'g-bing', label: 'بينج', engine: true,
+      tpl: 'https://www.bing.com/search?q=site%3A{host}+{title}' },
+    { id: 'g-ddg', label: 'دك دك جو', engine: true,
+      tpl: 'https://duckduckgo.com/?q=site%3A{host}+{title}' },
+    { id: 'g-yandex', label: 'ياندكس', engine: true,
+      tpl: 'https://yandex.com/search/?text=site%3A{host}+{title}' }
+  ];
+
   function patternById(id) {
-    for (var i = 0; i < PATTERNS.length; i++) if (PATTERNS[i].id === id) return PATTERNS[i];
+    var i;
+    for (i = 0; i < PATTERNS.length; i++) if (PATTERNS[i].id === id) return PATTERNS[i];
+    for (i = 0; i < ENGINES.length; i++) if (ENGINES[i].id === id) return ENGINES[i];
     return PATTERNS[0];
+  }
+
+  /**
+   * كل الروابط اللي ممكن نجرّبها لهذا الموقع مع هذا العمل.
+   * المستخدم ما يحتاج يعرف شي — يضغط واحدًا واحدًا لين تظهر النتائج،
+   * واختياره ينحفظ للمصدر فيصير هو الافتراضي بعدين.
+   */
+  function optionsFor(src, item) {
+    var host = hostOf(src.origin || src.url);
+    var out = [];
+
+    /* لو تعلّمنا القالب من مثاله، هو الأول ولا نزاحمه */
+    if (src.tpl) {
+      out.push({ id: 'custom', label: src.learned ? 'المتعلَّم من مثالك' : 'الرسمي',
+                 url: buildFrom(src.tpl, src, item, host) });
+    }
+
+    PATTERNS.forEach(function (pt) {
+      out.push({ id: pt.id, label: pt.label, url: buildFrom(pt.tpl, src, item, host) });
+    });
+
+    ENGINES.forEach(function (en) {
+      out.push({ id: en.id, label: en.label, engine: true,
+                 url: buildFrom(en.tpl, src, item, host) });
+    });
+
+    return out;
+  }
+
+  function buildFrom(tpl, src, item, host) {
+    var probe = { originalTitle: searchTerm(item), title: searchTerm(item), year: '', type: item.type };
+    return fill(tpl, probe, { key: src.key, origin: src.origin || originOf(src.url), host: host });
   }
 
   /* مواقع معروفة رابط بحثها موثّق — تُضبط تلقائيًا لما تلصق نطاقها */
@@ -249,7 +297,8 @@
       '{season}':    extra.season || 1,
       '{episode}':   extra.episode || 1,
       '{key}':       encodeURIComponent(extra.key || ''),
-      '{origin}':    extra.origin || ''
+      '{origin}':    extra.origin || '',
+      '{host}':      extra.host || ''
     };
     return String(tpl).replace(/\{[a-z_]+\}/g, function (t) {
       return map[t] !== undefined ? String(map[t]) : t;
@@ -266,8 +315,11 @@
     var e = Object.assign({ key: src.key, origin: src.origin || originOf(src.url) }, extra || {});
 
     if (src.type === 'site') {
-      var tpl = src.tpl || patternById(src.pattern).tpl;
+      /* النمط المختار يغلب، وإلا القالب المتعلَّم، وإلا الافتراضي */
+      var pt = src.pattern && src.pattern !== 'custom' ? patternById(src.pattern) : null;
+      var tpl = pt ? pt.tpl : (src.tpl || patternById('s').tpl);
       var probe = { originalTitle: searchTerm(item), title: searchTerm(item), year: '', type: item.type };
+      e.host = hostOf(src.origin || src.url);
       return fill(tpl, probe, e);
     }
 
@@ -464,6 +516,8 @@
     isHls: isHls,
     TOKENS: TOKENS,
     PATTERNS: PATTERNS,
+    ENGINES: ENGINES,
+    optionsFor: optionsFor,
     all: all,
     byId: byId,
     add: add,

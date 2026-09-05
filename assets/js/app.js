@@ -1308,6 +1308,11 @@
     return CS.mySources.all().filter(function (s) { return s.enabled; });
   }
 
+  function watchActive() {
+    var list = activeSources();
+    return list.filter(function (s) { return s.id === watchPick; })[0] || list[0] || null;
+  }
+
   function renderWatch() {
     var sec = $('#dt-watch');
     if (!sec || !detailCtx) return;
@@ -1729,6 +1734,14 @@
 
       var wp = e.target.closest('[data-watch-src]');
       if (wp) { watchPick = wp.dataset.watchSrc; renderWatch(); return; }
+
+      /* تجربة نمط بحث ثانٍ — الاختيار ينحفظ للمصدر فما يعيدها */
+      var pat = e.target.closest('[data-watch-pattern]');
+      if (pat && watchActive()) {
+        CS.mySources.update(watchActive().id, { pattern: pat.dataset.watchPattern });
+        renderWatch();
+        return;
+      }
       if (e.target.closest('[data-route-home]')) { e.preventDefault(); location.hash = '#/'; return; }
 
       if (!e.target.closest('#search-form')) hideSuggest();

@@ -696,3 +696,20 @@ a.srcitem__url:hover{ color:var(--hot); text-decoration:underline; }
 .srcitem__try{ display:inline-block; margin-top:.3rem; font-size:.76rem; font-weight:800;
   color:var(--hot); text-decoration:none; }
 .srcitem__try:hover{ text-decoration:underline; }
+
+/* ============================================================
+   تجربة أنماط البحث بضغطة — بلا إعدادات
+   ============================================================ */
+
+.tryrow{ display:flex; gap:.35rem; flex-wrap:wrap; align-items:center; }
+.tryrow__lbl{ font-size:.78rem; color:var(--text-3); font-weight:800; margin-inline-end:.2rem; }
+.tryrow__b{
+  padding:.3rem .7rem; border-radius:999px; font-size:.75rem; font-weight:800;
+  border:1px solid var(--line); background:var(--surface-2); color:var(--text-2); cursor:pointer;
+}
+.tryrow__b:hover{ color:var(--hot); border-color:rgba(255,122,47,.45); }
+.tryrow__b.is-on{ background:linear-gradient(135deg, var(--hot), #e0431f); color:#140a06; border-color:transparent; }
+.tryrow__b.is-eng{ border-style:dashed; }
+.tryrow__b.is-eng.is-on{ border-style:solid; }
+/* إطار صفحة بحث لا فيديو: نسبة ١٦:٩ تهدر الشاشة وتدفن الأزرار */
+.watch__frame.is-page{ aspect-ratio:auto; height:min(60vh,520px); }
