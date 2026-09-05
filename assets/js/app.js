@@ -25,6 +25,33 @@
 
   function attrEsc(v) { return String(v).replace(/(["\\])/g, '\\$1'); }
 
+  /* الحافظة تُرفض في سفاري والسياقات غير الآمنة — لازم بديل ما يفشل بصمت */
+  function copyLink(url) {
+    function fallback() {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = url;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        CS.ui.toast(ok ? '🔗 انتسخ الرابط' : url);
+      } catch (e) {
+        CS.ui.toast(url);
+      }
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url)
+        .then(function () { CS.ui.toast('🔗 انتسخ الرابط'); })
+        .catch(fallback);
+      return;
+    }
+    fallback();
+  }
+
   /* ============================================================
      تبديل الصفحات
      ============================================================ */
@@ -71,16 +98,22 @@
      الصفحة الرئيسية = الاستكشاف
      ============================================================ */
 
-  function renderHome() {
-    showView('home');
-    var wrap = $('#home-rows');
+  function paintTasteState() {
+    var el = $('#taste-state');
+    if (!el) return;
     var counts = CS.taste.counts();
-
-    $('#taste-state').innerHTML = counts.likes
+    el.innerHTML = (counts.likes || counts.dislikes)
       ? '🟢 ذوقك مبني على <b>' + counts.likes + '</b> عمل عجبك' +
         (counts.dislikes ? ' و<b>' + counts.dislikes + '</b> ما عجبك' : '') +
         ' — <button class="linkish" id="btn-reset-taste">صفّر ذوقي</button>'
       : '🟡 اضغط 👍 على أي عمل، وهذي الصفحة تتحول لذوقك أنت.';
+  }
+
+  function renderHome() {
+    showView('home');
+    var wrap = $('#home-rows');
+
+    paintTasteState();
 
     wrap.innerHTML = '<div class="grid">' + CS.ui.skeletons(12) + '</div>';
 
@@ -116,6 +149,7 @@
     }).catch(function (err) {
       if (CS.state.view !== 'home') return;
       var why = err && err.reason ? err.reason : 'سبب غير معروف';
+      showTmdbProblem(why);
       wrap.innerHTML =
         '<div class="empty"><b>🔴 ما قدرت أوصل لـ TMDB</b>' +
         '<p>' + CS.util.esc(why) + '</p>' +
@@ -189,9 +223,10 @@
     var more = $('#loadmore-wrap');
 
     /* الفلتر العمري يحتاج التصنيفات جاهزة قبل ما نقرر إيش نخفي */
+    /* نجيب تصنيفات كل النتائج لا الظاهرة فقط، وإلا العدد يقفز مع كل «اعرض المزيد» */
     var pre = CS.certs.currentFilter() === 'all'
       ? Promise.resolve()
-      : ensureCerts(CS.state.results, CS.state.shown + LIM.pageSize);
+      : ensureCerts(CS.state.results, 150);
 
     pre.then(function () {
       var filtered = applyFilters(CS.state.results.slice());
@@ -232,6 +267,7 @@
     }
     if (m.translated) bits.push('جرّبت كمان بالإنجليزي: ' + m.translated);
     if (m.relatedOf) bits.push('+ أعمال قريبة من «' + m.relatedOf + '»');
+    if (m.tmdbError) bits.push('🔴 TMDB ما رد: ' + m.tmdbError);
     return bits.join(' · ');
   }
 
@@ -239,7 +275,7 @@
 
   function doSearch(query, mode, skipHash) {
     query = String(query || '').trim();
-    if (!query) return;
+    if (!query) { renderHome(); return; }
 
     mode = mode || CS.state.mode || 'auto';
     CS.state.query = query;
@@ -272,6 +308,8 @@
       CS.state.meta = res.meta;
       CS.state.shown = LIM.pageSize;
       remember(res.items);
+      /* نتائج ويكيبيديا تخفي فشل TMDB — نعلنه في الشريط فوق */
+      if (res.meta.tmdbError) showTmdbProblem(res.meta.tmdbError); else refreshKeyNotice();
       paintResults();
     }).catch(function (err) {
       if (token !== searchToken) return;
@@ -293,8 +331,8 @@
     remember(likes); remember(dis);
 
     $('#liked-grid').innerHTML = CS.ui.cards(likes);
-    $('#liked-empty').hidden = likes.length > 0;
-    $('#liked-meta').textContent = likes.length
+    $('#liked-empty').hidden = likes.length > 0 || dis.length > 0;
+    $('#liked-meta').textContent = (likes.length || dis.length)
       ? likes.length + ' عمل عجبك' + (dis.length ? ' · ' + dis.length + ' ما عجبك' : '')
       : '';
 
@@ -466,7 +504,9 @@
     panel.innerHTML = CS.ui.detailSkeleton();
     window.scrollTo(0, 0);
 
-    var cached = itemCache['w/' + lang + '/' + title];
+    /* itemKey يرمّز العنوان، فلازم نبحث بنفس الصيغة وإلا نخسر البوستر والسنة */
+    var cached = itemCache['w/' + lang + '/' + encodeURIComponent(title)] ||
+                 itemCache['w/' + lang + '/' + title];
 
     CS.wiki.fullPlot(lang, title).then(function (plot) {
       if (token !== detailToken) return;
@@ -502,7 +542,9 @@
     $('#tr-email').value = CS.store.get(CS.KEYS.email, '') || '';
     $('#set-lang').value = CS.state.lang;
     $('#set-region').value = CS.state.region;
-    $('#key-state').className = 'keystate';
+    var st = $('#key-state');
+    st.className = 'keystate';
+    st.textContent = '';
     $('#settings').hidden = false;
     document.body.classList.add('is-locked');
     setTimeout(function () { $('#api-key').focus(); }, 60);
@@ -517,9 +559,7 @@
     setTimeout(function () {
       closeSettings();
       CS.ui.toast('🟢 تم الحفظ');
-      if (CS.state.view === 'results' && CS.state.query) doSearch(CS.state.query, CS.state.mode, true);
-      else if (CS.state.view === 'liked') renderLiked();
-      else if (CS.state.view === 'home') renderHome();
+      rerenderCurrent();
     }, 700);
   }
 
@@ -567,9 +607,31 @@
     });
   }
 
+  /* يعيد بناء الشاشة الحالية أيًا كانت — بما فيها صفحة العمل */
+  function rerenderCurrent() {
+    var r = parseHash();
+    if (r.name === 'detail') { openDetail(r.type, r.id); return; }
+    if (r.name === 'wiki')   { openWikiDetail(r.lang, r.title); return; }
+    if (CS.state.view === 'results' && CS.state.query) { doSearch(CS.state.query, CS.state.mode, true); return; }
+    if (CS.state.view === 'liked') { renderLiked(); return; }
+    renderHome();
+  }
+
   function refreshKeyNotice() {
     var off = CS.store.get(CS.KEYS.noticeOff, false);
     $('#key-notice').hidden = CS.hasKey() || off;
+  }
+
+  /* TMDB ما يرد فعليًا؟ نقولها في الشريط العلوي مهما كان في الصفحة */
+  function showTmdbProblem(reason) {
+    var bar = $('#key-notice');
+    if (CS.store.get(CS.KEYS.noticeOff, false)) return;
+    $('#key-notice-text').textContent = CS.state.userKey
+      ? '🔴 مفتاحك الخاص ما يشتغل: ' + reason
+      : '🔴 المفتاح المشترك ما يشتغل: ' + reason + ' — حط مفتاحك الخاص المجاني.';
+    $('#notice-open-settings').textContent = 'افحص الاتصال';
+    bar.dataset.tmdbBroken = '1';
+    bar.hidden = false;
   }
 
   /* ---------- زر «تحقق من الاتصال» ---------- */
@@ -695,7 +757,12 @@
   }
 
   function parseHash() {
-    var h = location.hash.slice(1).replace(/^\//, '');
+    var raw = location.hash.slice(1);
+    if (!raw) return { name: 'home' };
+    /* مرساة داخل الصفحة (#main) مو مسار — ما نغيّر الشاشة لها */
+    if (raw.charAt(0) !== '/') return { name: 'ignore' };
+
+    var h = raw.replace(/^\//, '');
     if (!h) return { name: 'home' };
     var parts = h.split('/');
 
@@ -718,6 +785,7 @@
   function onRoute() {
     if (suppressRoute) { suppressRoute = false; return; }
     var r = parseHash();
+    if (r.name === 'ignore') return;
 
     if (r.name !== 'detail' && r.name !== 'wiki') detailToken++;
 
@@ -784,6 +852,7 @@
     });
 
     updateLikeCount();
+    paintTasteState();
     if (CS.state.view === 'liked') renderLiked();
   }
 
@@ -895,11 +964,7 @@
       var share = e.target.closest('[data-share]');
       if (share) {
         var url = location.origin + location.pathname + '#/work/' + share.dataset.share;
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(url).then(function () { CS.ui.toast('🔗 انتسخ الرابط'); });
-        } else {
-          CS.ui.toast(url);
-        }
+        copyLink(url);
         return;
       }
 
@@ -931,7 +996,10 @@
     /* --- أزرار الهيدر --- */
     $('#btn-fav').addEventListener('click', function () { location.hash = '#/liked'; });
     $('#btn-settings').addEventListener('click', openSettings);
-    $('#notice-open-settings').addEventListener('click', openSettings);
+    $('#notice-open-settings').addEventListener('click', function () {
+      openSettings();
+      if ($('#key-notice').dataset.tmdbBroken) testConnection();
+    });
 
     $('#notice-dismiss').addEventListener('click', function () {
       CS.store.set(CS.KEYS.noticeOff, true);
@@ -942,10 +1010,7 @@
       CS.state.lang = CS.store.set(CS.KEYS.lang, CS.state.lang === 'ar' ? 'en' : 'ar');
       $('#lang-label').textContent = CS.state.lang === 'ar' ? 'ع' : 'EN';
       CS.ui.toast(CS.state.lang === 'ar' ? '🟢 لغة المحتوى: العربية' : '🟢 Content language: English');
-      CS.tmdb.loadGenres().then(function () {
-        if (CS.state.view === 'results' && CS.state.query) doSearch(CS.state.query, CS.state.mode, true);
-        else if (CS.state.view === 'home') renderHome();
-      });
+      CS.tmdb.loadGenres().then(rerenderCurrent);
     });
 
     $('#btn-back-home').addEventListener('click', function () { location.hash = '#/'; });
@@ -966,6 +1031,26 @@
 
     /* --- الاختصارات --- */
     document.addEventListener('keydown', function (e) {
+      /* النافذة معلنة aria-modal، فلازم التركيز يضل داخلها فعلًا */
+      if (e.key === 'Tab' && !$('#settings').hidden) {
+        var focusables = $$(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          $('.modal__panel')
+        ).filter(function (el) { return el.offsetParent !== null; });
+        if (!focusables.length) return;
+
+        var first = focusables[0];
+        var last = focusables[focusables.length - 1];
+        var here = document.activeElement;
+
+        if (e.shiftKey && (here === first || !$('.modal__panel').contains(here))) {
+          e.preventDefault(); last.focus();
+        } else if (!e.shiftKey && (here === last || !$('.modal__panel').contains(here))) {
+          e.preventDefault(); first.focus();
+        }
+        return;
+      }
+
       if (e.key === 'Escape') {
         if (!$('#settings').hidden) return closeSettings();
         if (CS.state.view === 'detail') return goBack();
