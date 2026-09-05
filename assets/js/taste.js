@@ -207,7 +207,53 @@
     return added;
   }
 
+  /**
+   * نسبة تطابق العمل مع ذوقك — رقم حقيقي مبني على تصويتك، لا زينة.
+   * تُعرض في الصفحات اللي ما فيها استعلام بحث (الاستكشاف · الممثل · عجبني)،
+   * وترجّع صفرًا قبل ما تصوّت على شي فما نعرض شارة بلا معنى.
+   */
+  function matchPct(item) {
+    if (!item) return 0;
+    var p = profile();
+    var mine = p.genres || [];
+    var avoid = p.avoidGenres || [];
+    var ids = item.genreIds || [];
+
+    /* ما صوّت على شي بعد؟ الشارة تبقى موجودة لكن معناها يتغيّر بصراحة:
+       قوة الترشيح من تقييمه وعدد مصوّتيه وشهرته، لا تطابق ذوق ما نعرفه. */
+    if (!p.total || (!mine.length && !avoid.length)) {
+      item.matchBasis = 'quality';
+      var q = 42;
+      if (item.rating) q += (item.rating - 5.5) * 7;
+      if (item.votes) q += Math.min(14, Math.log10(item.votes + 1) * 4);
+      q += Math.min(10, Math.log10((item.popularity || 0) + 1) * 4);
+      return Math.max(20, Math.min(99, Math.round(q)));
+    }
+
+    item.matchBasis = 'taste';
+
+    var hit = 0, miss = 0;
+    ids.forEach(function (g) {
+      var rank = mine.indexOf(g);
+      if (rank !== -1) hit += 4 - Math.min(rank, 3);
+      if (avoid.indexOf(g) !== -1) miss += 3;
+    });
+
+    /* الأساس ٥٠٪: بلا اشتراك أنواع ولا نفور، العمل «محايد» لا صفر */
+    var score = 50 + hit * 9 - miss * 12;
+
+    /* التقييم والشهرة يرجّحان قليلًا، والسنة داخل مدى ما أعجبك */
+    if (item.rating) score += (item.rating - 6) * 2.5;
+    if (item.year && p.minYear && p.maxYear &&
+        item.year >= p.minYear - 5 && item.year <= p.maxYear + 5) score += 5;
+    if (p.leansTv && item.type === 'tv') score += 4;
+    if (!p.leansTv && item.type === 'movie') score += 4;
+
+    return Math.max(20, Math.min(99, Math.round(score)));
+  }
+
   CS.taste = {
+    matchPct: matchPct,
     verdict: verdict,
     merge: merge,
     set: set,

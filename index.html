@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://image.tmdb.org">
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/style.css?v=3.7.0">
+<link rel="stylesheet" href="assets/css/style.css?v=3.8.0">
 </head>
 <body>
 
@@ -250,7 +250,19 @@
 
       <label class="switch">
         <input type="checkbox" id="set-adultonly">
-        <span><b>🔞 وضع الكبار فقط</b><i>كل الأقسام — أفلام ومسلسلات وبرامج ووثائقي — تعرض المصنّف +17 فما فوق فقط (R / TV-MA / 18 / NC-17)</i></span>
+        <span><b>🔞 وضع الكبار فقط</b><i>كل الأقسام — أفلام ومسلسلات وبرامج ووثائقي — ما تعرض إلا محتوى الكبار</i></span>
+      </label>
+
+      <label class="field" id="adult-level-wrap">
+        <span class="field__label">عتبة الكبار</span>
+        <select id="set-adultlevel">
+          <option value="adults">+17 فما فوق — R · TV-MA · 15 · 18 · NC-17 (كتالوج واسع)</option>
+          <option value="adults18">+18 حصرًا — NC-17 · 18 · R18+ · AO (كتالوج ضيّق جدًا)</option>
+        </select>
+        <small class="field__hint">
+          🟠 <b>بصراحة:</b> «+18 حصرًا» يعتمد على تصنيف NC-17 الأمريكي وما عليه إلا بضع عشرات الأفلام
+          في TMDB كلها، فالأقسام بتطلع شبه فاضية. «+17 فما فوق» هو اللي يعطيك كتالوجًا شغّالًا.
+        </small>
       </label>
 
       <h3 class="modal__sec">المصادر</h3>
@@ -328,17 +340,17 @@
 
 <div class="toast" id="toast" hidden></div>
 
-<script src="assets/js/config.js?v=3.7.0"></script>
-<script src="assets/js/taste.js?v=3.7.0"></script>
-<script src="assets/js/certs.js?v=3.7.0"></script>
-<script src="assets/js/tmdb.js?v=3.7.0"></script>
-<script src="assets/js/wiki.js?v=3.7.0"></script>
-<script src="assets/js/sources.js?v=3.7.0"></script>
-<script src="assets/js/datasources.js?v=3.7.0"></script>
-<script src="assets/js/links.js?v=3.7.0"></script>
-<script src="assets/js/feed.js?v=3.7.0"></script>
-<script src="assets/js/search.js?v=3.7.0"></script>
-<script src="assets/js/ui.js?v=3.7.0"></script>
-<script src="assets/js/app.js?v=3.7.0"></script>
+<script src="assets/js/config.js?v=3.8.0"></script>
+<script src="assets/js/taste.js?v=3.8.0"></script>
+<script src="assets/js/certs.js?v=3.8.0"></script>
+<script src="assets/js/tmdb.js?v=3.8.0"></script>
+<script src="assets/js/wiki.js?v=3.8.0"></script>
+<script src="assets/js/sources.js?v=3.8.0"></script>
+<script src="assets/js/datasources.js?v=3.8.0"></script>
+<script src="assets/js/links.js?v=3.8.0"></script>
+<script src="assets/js/feed.js?v=3.8.0"></script>
+<script src="assets/js/search.js?v=3.8.0"></script>
+<script src="assets/js/ui.js?v=3.8.0"></script>
+<script src="assets/js/app.js?v=3.8.0"></script>
 </body>
 </html>

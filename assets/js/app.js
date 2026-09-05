@@ -108,6 +108,15 @@
     });
   }
 
+  /* الشارة لازم تكون في كل الصفحات لا في نتائج البحث وحدها.
+     الصفحات اللي ما فيها استعلام تعرض تطابق ذوقك — رقم حقيقي من تصويتك. */
+  function stampTaste(list) {
+    (list || []).forEach(function (it) {
+      if (it && !it.matchPct) it.matchPct = CS.taste.matchPct(it);
+    });
+    return list;
+  }
+
   function hydrate(root, list) {
     Promise.all([ensureCerts(list), ensureHeat(list)])
       .then(function () { paintBadges(root, list); });
@@ -123,6 +132,12 @@
 
   function adultOnlyOn() { return CS.store.get(CS.KEYS.adultOnly, true) !== false; }
 
+  /* أي عتبة اختارها: +17 فما فوق (الافتراضي) ولا +18 حصرًا */
+  function adultLevel() {
+    var v = CS.store.get(CS.KEYS.adultLevel, 'adults');
+    return v === 'adults18' ? 'adults18' : 'adults';
+  }
+
   function setAdultOnly(on) {
     CS.store.set(CS.KEYS.adultOnly, !!on);
     /* تفعيله من الإعدادات موافقة صريحة بذاته */
@@ -133,7 +148,7 @@
   function certFor(tab) {
     var conf = TABS[tab] || TABS.all;
     if (conf.cert !== 'all') return conf.cert;
-    return adultOnlyOn() ? 'adults' : 'all';
+    return adultOnlyOn() ? adultLevel() : 'all';
   }
 
   function titleFor(tab) {
@@ -256,6 +271,7 @@
       autoRounds++;
       if (shown.length) {
         $('#feed-empty').hidden = true;
+        stampTaste(shown);
         $('#feed-grid').innerHTML = CS.ui.cards(shown);
         hydrate($('#feed-grid'), shown);
       }
@@ -273,6 +289,7 @@
     }
 
     $('#feed-empty').hidden = true;
+    stampTaste(shown);
     $('#feed-grid').innerHTML = CS.ui.cards(shown);
     $('#feed-count').textContent = shown.length + ' عمل' + (res.exhausted ? ' — خلصت المادة' : '');
     $('#feed-more').hidden = res.exhausted;
@@ -288,6 +305,12 @@
         '<p>TMDB ما يوفّر تصفّحًا لهذا المحتوى — ما فيه أي معامل يطلب «الإباحي فقط»، ' +
         'وأغلب هذي الأعمال بلا بوستر ولا ملخّص أصلًا.</p>' +
         '<p style="margin-top:.8rem">الطريقة الوحيدة اللي تشتغل: <b>ابحث باسم صريح</b> من الخانة فوق.</p>';
+    }
+    if (CS.certs.currentFilter() === 'adults18') {
+      return '<b>🔞 عتبة «+18 حصرًا» شغّالة</b>' +
+        '<p>هذي أضيق عتبة: NC-17 وما يعادله، وTMDB ما عليه إلا بضع عشرات الأفلام بهذا التصنيف. ' +
+        'رجّعها لـ«+17 فما فوق» من ⚙️ الإعدادات عشان يرجع الكتالوج.</p>' +
+        '<div style="margin-top:1.2rem"><button class="btn" data-open-settings>⚙️ افتح الإعدادات</button></div>';
     }
     if (CS.certs.currentFilter() === 'adults') {
       return '<b>🔞 وضع البالغين فقط شغّال</b>' +
@@ -427,6 +450,7 @@
     var dis = CS.taste.dislikes();
     remember(likes); remember(dis);
 
+    stampTaste(likes); stampTaste(dis);
     $('#liked-grid').innerHTML = CS.ui.cards(likes);
     $('#liked-empty').hidden = likes.length > 0 || dis.length > 0;
     $('#liked-meta').textContent = (likes.length || dis.length)
@@ -486,7 +510,7 @@
 
   var detailToken = 0;
   var detailCtx = null;
-  var related = { items: [], page: 0, exhausted: false, loading: false };
+  var related = { items: [], page: 0, exhausted: false, loading: false, autoRounds: 0 };
 
   function repaintStory() {
     var sec = $('#dt-story');
@@ -501,7 +525,7 @@
     var panel = $('#detail-panel');
     panel.innerHTML = CS.ui.detailSkeleton();
     window.scrollTo(0, 0);
-    related = { items: [], page: 0, exhausted: false, loading: false };
+    related = { items: [], page: 0, exhausted: false, loading: false, autoRounds: 0 };
 
     CS.tmdb.details(type, id).then(function (d) {
       if (token !== detailToken) return;
@@ -548,7 +572,57 @@
   }
 
   /* الأعمال ذات الصلة: مشابهات + ترشيحات، صفحة صفحة وبلا تكرار */
+  /**
+   * درجة القرب من العمل المفتوح.
+   * TMDB يرجّع قائمتين بترتيبها هي، وكنا نلصقهما كما جاءتا — فتطلع عشوائية.
+   * الترتيب هنا يبني على: ترشيحات TMDB أفضل تحريريًا من «مشابه»، ثم اشتراك
+   * الأنواع، ثم التقييم وعدد المصوّتين والشهرة.
+   */
+  function relatedScore(it, srcRank, idx, base) {
+    var s = (srcRank === 0 ? 60 : 42) - Math.min(idx, 24);
+
+    var mine = base.genreIds || [];
+    var shared = (it.genreIds || []).filter(function (g) { return mine.indexOf(g) !== -1; }).length;
+    s += shared * 5;
+
+    if (it.rating) s += (it.rating - 5) * 2.4;
+    if (it.votes) s += Math.min(9, Math.log10(it.votes + 1) * 2.6);
+    s += Math.min(8, Math.log10((it.popularity || 0) + 1) * 3);
+
+    /* فرق السنة الكبير يبعّد العمل عن سياق اللي يتصفّحه */
+    if (it.year && base.year) s -= Math.min(6, Math.abs(it.year - base.year) / 8);
+    return s;
+  }
+
+  /* الرسم مع تطبيق فلتر التصنيف — الأعمال ذات الصلة كانت تتخطّاه */
+  function paintRelated(d, token) {
+    var sec = $('#dt-related');
+    if (!sec || token !== detailToken) return;
+
+    var mature = CS.certs.matureOnly();
+    var pre = mature ? ensureCerts(related.items, 120) : Promise.resolve();
+
+    pre.then(function () {
+      if (token !== detailToken) return;
+      var shown = mature
+        ? related.items.filter(function (it) { return CS.certs.passes(it) === true; })
+        : related.items;
+
+      var sec2 = $('#dt-related');
+      if (!sec2) return;
+      sec2.innerHTML = CS.ui.relatedSection(shown, related.exhausted, false);
+      hydrate(sec2, shown);
+
+      /* الفلترة قد تفرّغ الصفحة — نكمّل تلقائيًا */
+      if (mature && shown.length < 8 && !related.exhausted && related.autoRounds < 4) {
+        related.autoRounds++;
+        loadRelated(d, token, false);
+      }
+    });
+  }
+
   function loadRelated(d, token, first) {
+
     if (related.loading || related.exhausted) return;
     related.loading = true;
     if (!first) {
@@ -571,23 +645,29 @@
       seen[d.type + ':' + d.id] = true;
 
       var added = 0;
-      r[0].items.concat(r[1].items).forEach(function (it) {
-        var k = it.type + ':' + it.id;
-        if (seen[k] || !it.poster) return;
-        if (it.adult && !CS.certs.adultAllowed()) return;
-        seen[k] = true;
-        related.items.push(it);
-        added++;
+      [r[0].items, r[1].items].forEach(function (list, src) {
+        list.forEach(function (it, i) {
+          var k = it.type + ':' + it.id;
+          if (seen[k] || !it.poster) return;
+          if (it.adult && !CS.certs.adultAllowed()) return;
+          seen[k] = true;
+          /* الدرجة تُثبَّت وقت الإضافة فالترتيب ما يتبعثر مع كل صفحة */
+          it.relScore = relatedScore(it, src, (p - 1) * 20 + i, d);
+          related.items.push(it);
+          added++;
+        });
+      });
+
+      /* الترتيب الحقيقي: الأقرب أولًا لا ما رجّعته الواجهة عشوائيًا */
+      related.items.sort(function (a2, b2) { return (b2.relScore || 0) - (a2.relScore || 0); });
+      related.items.forEach(function (it, i) {
+        it.matchPct = Math.max(30, Math.min(99, 99 - i * 2));
       });
 
       if (p >= Math.max(r[0].pages, r[1].pages) || (!added && p > 1)) related.exhausted = true;
 
       remember(related.items);
-      var sec2 = $('#dt-related');
-      if (sec2) {
-        sec2.innerHTML = CS.ui.relatedSection(related.items, related.exhausted, false);
-        hydrate(sec2, related.items);
-      }
+      paintRelated(d, token);
       /* الصفحة الأولى قد ترجع قليلًا — نكمل تلقائيًا لين نوصل عددًا محترمًا */
       if (first && related.items.length < 20 && !related.exhausted) loadRelated(d, token, true);
     }).catch(function () { related.loading = false; });
@@ -720,6 +800,7 @@
       if (token !== detailToken) return;
       personCtx = { p: p, shown: PAGE, token: token };
       remember(p.works);
+      stampTaste(p.works);
       panel.innerHTML = CS.ui.person(p, personCtx.shown);
       hydrate(panel, p.works.slice(0, personCtx.shown));
       window.scrollTo(0, 0);
@@ -733,6 +814,7 @@
   function morePersonWorks() {
     if (!personCtx) return;
     personCtx.shown += PAGE;
+    stampTaste(personCtx.p.works);
     var panel = $('#person-panel');
     panel.innerHTML = CS.ui.person(personCtx.p, personCtx.shown);
     hydrate(panel, personCtx.p.works.slice(0, personCtx.shown));
@@ -749,6 +831,8 @@
     $('#set-region').value = CS.state.region;
     $('#set-autotr').checked = autoTranslateOn();
     $('#set-adultonly').checked = adultOnlyOn();
+    $('#set-adultlevel').value = adultLevel();
+    $('#adult-level-wrap').hidden = !adultOnlyOn();
     fillPresets();
     onPresetPick();
     renderDataSources();
@@ -790,6 +874,7 @@
     CS.state.region = CS.store.set(CS.KEYS.region, $('#set-region').value);
     CS.store.set(CS.KEYS.autoTr, $('#set-autotr').checked);
     setAdultOnly($('#set-adultonly').checked);
+    CS.store.set(CS.KEYS.adultLevel, $('#set-adultlevel').value);
     $('#lang-label').textContent = CS.state.lang === 'ar' ? 'ع' : 'EN';
 
     var mail = $('#tr-email').value.trim();
@@ -1424,6 +1509,7 @@
       if (share) { copyLink(location.origin + location.pathname + '#/work/' + share.dataset.share); return; }
 
       if (e.target.closest('[data-fatal-dismiss]')) { clearFatal(); return; }
+      if (e.target.closest('[data-open-settings]')) { openSettings(); return; }
       if (e.target.closest('[data-diagnose]')) { openSettings(); testConnection(); return; }
       if (e.target.closest('[data-retry-home]')) { startFeed(currentTab()); return; }
       if (e.target.closest('[data-tab-all]')) { setTab('all'); startFeed('all'); return; }
@@ -1487,6 +1573,9 @@
 
     /* --- الإعدادات --- */
     $('#btn-save-settings').addEventListener('click', saveSettings);
+    $('#set-adultonly').addEventListener('change', function () {
+      $('#adult-level-wrap').hidden = !this.checked;
+    });
     $('#btn-test-key').addEventListener('click', testConnection);
     $('#btn-clear-key').addEventListener('click', function () {
       $('#api-key').value = '';

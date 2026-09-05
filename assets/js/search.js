@@ -217,71 +217,98 @@
 
   /* ---------- محرك 3: بالثيمة (الكلمات المفتاحية) ---------- */
 
-  function engineTheme(q, qEn) {
+  /* كلمات لا تحمل معنى للبحث — إبقاؤها يضيّع نداءات ويجيب نتائج عشوائية */
+  var STOP = ('the a an of in on at to for and or but is are was were be been with from by '
+    + 'that this these those his her its their he she they it as into over under about after '
+    + 'before who whom which what when where why how not no يكون تكون التي الذي الذين هذا هذه '
+    + 'ذلك تلك في من على عن الى إلى مع بعد قبل عند كل بعض غير هو هي هم انا أنا انت أنت').split(/\s+/);
+
+  function isStop(w) { return STOP.indexOf(String(w).toLowerCase()) !== -1; }
+
+  /* الكلمات ذات المعنى في الاستعلام، الأطول أولًا لأنها الأدل */
+  function contentWords(text) {
+    return CS.util.words(text)
+      .filter(function (w) { return w.length >= 3 && !isStop(w); })
+      .filter(function (w, i, a) { return a.indexOf(w) === i; })
+      .sort(function (a, b) { return b.length - a.length; })
+      .slice(0, 6);
+  }
+
+  /**
+   * محرك الثيمة — أُعيد بناؤه.
+   * قبل: يبحث بالجملة كاملة ككلمة مفتاحية واحدة، وإذا فشلت يجرّب أطول كلمة وحدها.
+   * جملة مثل «The mother is naked in front of her son» ما تطابق أي كلمة مفتاحية،
+   * فكانت النتيجة تنبني على كلمة واحدة عشوائية.
+   * الآن: نفكّك الجملة لكلماتها الدالة، نحلّ كل وحدة لكلمة TMDB مفتاحية،
+   * ثم نرتّب الأعمال حسب كم كلمة من كلماتك تحملها — العمل اللي يجمع
+   * «mother» و«nudity» و«son» يتقدّم على اللي يحمل وحدة فقط.
+   */
+  function engineTheme(q, qEn, wantWide) {
     if (!CS.hasKey()) return Promise.resolve([]);
     var probe = qEn || q;
 
-    return CS.tmdb.searchKeywords(probe).then(function (kws) {
-      if (!kws.length) {
-        /* نجرّب أهم كلمة في الجملة */
-        var big = CS.util.words(probe)
-          .filter(function (w) { return w.length > 3; })
-          .sort(function (a, b) { return b.length - a.length; })[0];
-        if (!big) return [];
-        return CS.tmdb.searchKeywords(big);
-      }
-      return kws;
-    }).then(function (kws) {
-      if (!kws.length) return [];
-      var ids = kws.slice(0, LIM.keywordSeeds).map(function (k) { return k.id; });
-      var names = kws.slice(0, LIM.keywordSeeds).map(function (k) { return k.name; }).join('، ');
+    /* الجملة كاملة أولًا: أحيانًا تكون هي نفسها كلمة مفتاحية («time loop») */
+    var terms = [probe].concat(contentWords(probe));
 
-      return Promise.all([
-        CS.tmdb.discoverByKeywords('movie', ids),
-        CS.tmdb.discoverByKeywords('tv', ids)
-      ]).then(function (res) {
-        var out = [];
-        res.forEach(function (list) {
-          list.forEach(function (item, i) {
-            item.why = 'theme';
-            item.whyText = 'نفس الثيمة: ' + names;
-            item.engineScore = 44 - Math.min(i, 18);
-            out.push(item);
+    return CS.util.pool(terms, 4, function (t) {
+      return CS.tmdb.searchKeywords(t).then(function (list) {
+        /* المطابقة الحرفية أدق من أول نتيجة، ونقبل أقرب واحدة عند غيابها */
+        var exact = (list || []).filter(function (k) {
+          return String(k.name || '').toLowerCase() === String(t).toLowerCase();
+        })[0];
+        var pick = exact || (list || [])[0];
+        return pick ? { id: pick.id, name: pick.name, term: t, exact: !!exact } : null;
+      }).catch(function () { return null; });
+    }).then(function (found) {
+      var kws = found.filter(Boolean).filter(function (k, i, a) {
+        return a.map(function (x) { return x.id; }).indexOf(k.id) === i;
+      });
+      if (!kws.length) return [];
+
+      var seeds = kws.slice(0, Math.max(LIM.keywordSeeds, 6));
+      var names = seeds.map(function (k) { return k.name; }).join('، ');
+
+      /* نستكشف كل كلمة على حدة عشان نعرف أي عمل يحمل كم كلمة منها */
+      return CS.util.pool(seeds, 3, function (k) {
+        return Promise.all([
+          CS.tmdb.discoverByKeywords('movie', [k.id]),
+          CS.tmdb.discoverByKeywords('tv', [k.id])
+        ]).then(function (r) {
+          return { kw: k, items: (r[0] || []).concat(r[1] || []) };
+        }).catch(function () { return { kw: k, items: [] }; });
+      }).then(function (sets) {
+        var byKey = {};
+
+        sets.forEach(function (set) {
+          (set.items || []).forEach(function (item, i) {
+            var k = item.type + ':' + item.id;
+            if (!byKey[k]) {
+              item.why = 'theme';
+              item.hits = [];
+              item.engineScore = 0;
+              byKey[k] = item;
+            }
+            var cur = byKey[k];
+            if (cur.hits.indexOf(set.kw.name) === -1) cur.hits.push(set.kw.name);
+            /* كل كلمة إضافية ترفع العمل بوضوح — هذا جوهر البحث بالوصف */
+            cur.engineScore += (set.kw.exact ? 22 : 14) - Math.min(i, 12) * 0.5;
           });
         });
-        return out;
+
+        var out = Object.keys(byKey).map(function (k) { return byKey[k]; });
+        out.forEach(function (item) {
+          var n = item.hits.length;
+          if (n > 1) item.engineScore += (n - 1) * 26;   /* التقاطع هو الإشارة الأقوى */
+          item.whyText = n > 1
+            ? 'يجمع ' + n + ' من عناصر وصفك: ' + item.hits.join(' + ')
+            : 'نفس الثيمة: ' + item.hits[0];
+        });
+
+        out.sort(function (a, b) { return b.engineScore - a.engineScore; });
+        return out.slice(0, wantWide ? 120 : 60);
       });
     }).catch(function () { return []; });
   }
-
-  /* ---------- عنصر من ويكيبيديا فقط ---------- */
-
-  function fromWiki(w) {
-    return {
-      id: 'w' + w.wikiPageId,
-      type: w.type,
-      title: w.cleanTitle,
-      originalTitle: '',
-      year: w.year,
-      date: w.year ? String(w.year) : '',
-      poster: w.thumb,
-      posterLarge: w.thumb,
-      backdrop: '',
-      rating: 0,
-      votes: 0,
-      popularity: 0,
-      overview: w.extract || w.description || '',
-      plotSnippet: w.extract || '',
-      genreIds: [],
-      source: 'wiki',
-      wikiUrl: w.wikiUrl,
-      wikiTitle: w.wikiTitle,
-      wikiLang: w.wikiLang,
-      wikiDescription: w.description
-    };
-  }
-
-  /* ---------- الدمج والترتيب ---------- */
 
   function merge(sets) {
     var byKey = {}, order = [];
@@ -405,7 +432,7 @@
         meta.engines.push(asTitle ? 'wikiTitle' : 'plot');
         jobs.push(enginePlot(q, qEn, asTitle));
       }
-      if (wantTheme) { meta.engines.push('theme'); jobs.push(engineTheme(q, qEn)); }
+      if (wantTheme) { meta.engines.push('theme'); jobs.push(engineTheme(q, qEn, tagOnly || intent === 'plot')); }
 
       return Promise.all(jobs.map(function (p) {
         return p.catch(function () { return []; });
@@ -418,6 +445,8 @@
           (list || []).forEach(function (it) {
             if (it.why === 'title' && (it.titleSim || 0) < .7) it.engineScore -= 45;
             if (it.why === 'plot') it.engineScore += 30;
+            /* عمل يجمع أكثر من عنصر من وصفك أقوى دليل عندنا على الإطلاق */
+            if (it.why === 'theme' && it.hits && it.hits.length > 1) it.engineScore += 20;
           });
         });
       }

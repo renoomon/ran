@@ -66,11 +66,18 @@
            '"><i style="width:' + h.score + '%"></i></div>';
   }
 
-  /* نسبة التطابق مع بحث المستخدم — تظهر في النتائج فقط */
+  /* نسبة التطابق — في البحث تعني قرب النتيجة من استعلامك،
+     وفي بقية الصفحات تعني قربها من ذوقك المبني على تصويتك */
   function matchBadge(item) {
     if (!item.matchPct) return '';
-    return '<span class="card__match' + (item.matchPct >= 85 ? ' is-top' : '') + '">مطابق ' +
-      item.matchPct + '٪</span>';
+    /* الرقم حقيقي دائمًا، وكلمته تتبع أساسه فما نوهم المستخدم بشي */
+    var quality = item.matchBasis === 'quality';
+    var why = item.why === 'related' ? 'قربه من العمل اللي فتحته'
+            : quality ? 'قوة الترشيح: تقييمه وعدد مصوّتيه وشهرته — صوّت على أعمال وبتتحوّل لتطابق ذوقك'
+            : item.whyText ? 'قربه من بحثك'
+            : 'تطابقه مع ذوقك حسب تصويتك';
+    return '<span class="card__match' + (item.matchPct >= 85 ? ' is-top' : '') +
+      '" title="' + esc(why) + '">' + (quality ? 'مرشّح ' : 'مطابق ') + item.matchPct + '٪</span>';
   }
 
   function voteBar(item, big) {
