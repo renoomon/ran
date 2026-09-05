@@ -17,10 +17,19 @@
 
   var TYPES = {
     site:  'موقع كامل — يبحث فيه بالاسم',
+    video: 'ملف فيديو مباشر (MP4 أو HLS)',
     embed: 'مشغّل داخل الصفحة (iframe)',
     link:  'رابط يفتح في تبويب جديد',
     api:   'API يرجّع JSON فيه رابط التشغيل'
   };
+
+  /* ملف وسائط مباشر: <video> يشغّله بلا أي ترويسات CORS —
+     التقييد على قراءة الجافاسكربت للبايتات، لا على تشغيل الوسائط.
+     HLS استثناء: سفاري يشغّله أصلًا، وباقي المتصفحات تحتاج hls.js وترويسات CORS. */
+  var MEDIA_RE = /\.(mp4|m4v|webm|ogv|mov|m3u8|mpd)(\?|#|$)/i;
+
+  function isMediaUrl(url) { return MEDIA_RE.test(String(url || '')); }
+  function isHls(url) { return /\.m3u8(\?|#|$)/i.test(String(url || '')); }
 
   /* ------------------------------------------------------------
      أنماط البحث داخل المواقع
@@ -113,6 +122,7 @@
 
   /* النوع اللي يناسب الرابط اللي لصقه المستخدم */
   function guessType(url) {
+    if (isMediaUrl(url)) return 'video';
     if (!hasTokens(url)) return 'site';
     if (/\/api\/|\/api\?|\.json|format=json/i.test(url)) return 'api';
     return 'embed';
@@ -136,7 +146,9 @@
     var item = {
       id: 's' + Date.now() + Math.floor(Math.random() * 1000),
       name: String(src.name || '').trim() || nameFromUrl(url) || 'مصدر',
-      url: hasTokens(raw) ? raw : originOf(url),
+      /* «موقع كامل» وحده يُختزل لنطاقه — غيره يحتفظ بالمسار كما هو،
+         وإلا ضاع مسار ملف الفيديو أو القالب */
+      url: type === 'site' && !hasTokens(raw) ? originOf(url) : url,
       origin: originOf(url),
       key: String(src.key || '').trim(),
       type: type,
@@ -252,6 +264,13 @@
       return Promise.resolve(mark(src, true, 'رابط جاهز — يفتح في تبويب جديد: ' + short(url)));
     }
 
+    if (src.type === 'video') {
+      /* ما نتحقق بـfetch — العنصر <video> نفسه هو الحكم، وهو ما يحتاج CORS */
+      return probeMedia(url).then(function (r) {
+        return mark(src, r.ok, r.detail + ' (' + (Date.now() - started) + ' مللي)');
+      });
+    }
+
     if (src.type === 'site' || src.type === 'embed') {
       return reachable(url).then(function (r) {
         var ms = ' (' + (Date.now() - started) + ' مللي)';
@@ -303,6 +322,52 @@
       });
   }
 
+  /**
+   * يجرّب تشغيل الملف فعليًا في عنصر <video> مخفي.
+   * هذا فحص حقيقي: loadedmetadata يعني المتصفح فتح الملف وقرأ مدته.
+   * HLS في غير سفاري ما يشتغل أصلًا بلا hls.js، فنقول له كذا بصراحة.
+   */
+  function probeMedia(url) {
+    return new Promise(function (resolve) {
+      var v = document.createElement('video');
+
+      if (isHls(url) && !v.canPlayType('application/vnd.apple.mpegurl')) {
+        resolve({ ok: true, detail: 'ملف HLS — متصفحك ما يشغّله أصلًا، ' +
+          'فالموقع بيحمّل مشغّل hls.js وقت التشغيل. يحتاج سيرفرك يرسل ترويسات CORS' });
+        return;
+      }
+
+      v.preload = 'metadata';
+      v.muted = true;
+      v.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;top:-9999px';
+      var done = false;
+
+      var timer = setTimeout(function () { finish(false, 'ما رد خلال ١٢ ثانية'); }, 12000);
+
+      v.onloadedmetadata = function () {
+        finish(true, 'شغّال — فتح الملف' +
+          (isFinite(v.duration) && v.duration ? ' ومدته ' + Math.round(v.duration / 60) + ' دقيقة' : ''));
+      };
+      v.onerror = function () {
+        var e = v.error || {};
+        finish(false, e.code === 4 ? 'الملف مو مدعوم أو الرابط غلط'
+                    : e.code === 2 ? 'انقطعت الشبكة قبل ما يفتح'
+                    : 'ما قدر يفتح الملف' + (e.message ? ' — ' + e.message : ''));
+      };
+
+      function finish(ok, detail) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        try { v.src = ''; document.body.removeChild(v); } catch (e) { /* أُزيل */ }
+        resolve({ ok: ok, detail: detail });
+      }
+
+      v.src = url;
+      document.body.appendChild(v);
+    });
+  }
+
   function pickStream(j) {
     if (!j || typeof j !== 'object') return '';
     var keys = ['url', 'stream', 'link', 'src', 'file', 'playback_url', 'hls', 'embed'];
@@ -337,6 +402,8 @@
   CS.mySources = {
     TYPES: TYPES,
     reachable: reachable,
+    isMediaUrl: isMediaUrl,
+    isHls: isHls,
     TOKENS: TOKENS,
     PATTERNS: PATTERNS,
     all: all,

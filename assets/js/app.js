@@ -1069,9 +1069,10 @@
     var isSite = type === 'site';
     $('#src-pattern').closest('.field').hidden = !isSite;
     $('#src-tpl-wrap').hidden = !(isSite && $('#src-pattern').value === 'custom');
-    $('#src-key').closest('.field').hidden = isSite;
-    $('#src-url').placeholder = isSite
-      ? 'https://example.com'
+    $('#src-key').closest('.field').hidden = isSite || type === 'video';
+    $('#src-url').placeholder =
+      isSite          ? 'https://example.com'
+      : type === 'video' ? 'https://your-cdn.com/films/{imdb}/master.m3u8'
       : 'https://your-cdn.com/embed/{imdb}';
   }
 
@@ -1097,6 +1098,13 @@
       tpl: known ? known.tpl : ($('#src-pattern').value === 'custom' ? $('#src-tpl').value.trim() : ''),
       key: $('#src-key').value.trim()
     };
+
+    if ($('#src-type').value === 'video') {
+      out.innerHTML = '🎞️ ملف مباشر — الموقع بيشغّله داخل الصفحة' +
+        (CS.mySources.isHls(raw) ? ' بمشغّل HLS يتحمّل وقت التشغيل' : '') +
+        '. اضغط «أضف» وبيجرّب يفتحه فعلًا ويقول لك النتيجة.';
+      return;
+    }
 
     var sample = sampleUrl(draft);
     out.innerHTML = '🔎 رابط البحث اللي بيتولّد لفيلم Inception — ' +
@@ -1289,6 +1297,7 @@
     var rkey = active ? active.id + '|' + item.type + '|' + item.id : '';
 
     sec.innerHTML = CS.ui.watchSection(item, list, active ? active.id : null, watchResolved[rkey] || '');
+    attachMedia(sec);
 
     /* مصدر من نوع API: نطلب منه رابط التشغيل ثم نعيد الرسم */
     if (active && active.type === 'api' && !watchResolved[rkey] &&
@@ -1306,6 +1315,61 @@
         }
       });
     }
+  }
+
+  /* ------------------------------------------------------------
+     تشغيل الملفات المباشرة
+     MP4 يشتغل بالعنصر نفسه. HLS: سفاري يشغّله أصلًا، وغيره
+     يحتاج hls.js — نحمّله وقت الحاجة فقط لا مع كل صفحة.
+     ------------------------------------------------------------ */
+
+  var HLS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.min.js';
+  var hlsLoading = null;
+
+  function loadHls() {
+    if (window.Hls) return Promise.resolve(window.Hls);
+    if (hlsLoading) return hlsLoading;
+    hlsLoading = new Promise(function (resolve, reject) {
+      var sc = document.createElement('script');
+      sc.src = HLS_URL;
+      sc.onload = function () { resolve(window.Hls); };
+      sc.onerror = function () { reject(new Error('ما قدرت أحمّل مشغّل HLS')); };
+      document.head.appendChild(sc);
+    });
+    return hlsLoading;
+  }
+
+  function attachMedia(root) {
+    $$('video[data-media-src]', root || document).forEach(function (v) {
+      if (v.dataset.wired) return;
+      v.dataset.wired = '1';
+      var url = v.dataset.mediaSrc;
+
+      /* MP4 وغيره: العنصر يكفي */
+      if (!CS.mySources.isHls(url)) { v.src = url; return; }
+
+      /* سفاري وiOS يشغّلون HLS بلا مكتبة */
+      if (v.canPlayType('application/vnd.apple.mpegurl')) { v.src = url; return; }
+
+      loadHls().then(function (Hls) {
+        if (!Hls || !Hls.isSupported()) throw new Error('متصفحك ما يدعم HLS');
+        var hls = new Hls({ enableWorker: true });
+        hls.loadSource(url);
+        hls.attachMedia(v);
+        hls.on(Hls.Events.ERROR, function (evt, data) {
+          if (!data || !data.fatal) return;
+          mediaFail(v, 'ما قدر يشغّل البث — ' +
+            (data.type === 'networkError'
+              ? 'سيرفرك ما يرسل ترويسات CORS، أو الرابط ما يوصل'
+              : 'خطأ في الوسائط'));
+        });
+      }).catch(function (e) { mediaFail(v, String(e && e.message || e)); });
+    });
+  }
+
+  function mediaFail(v, msg) {
+    var box = v.closest('.watch__frame');
+    if (box) box.innerHTML = '<div class="empty" style="padding:1.4rem">🔴 ' + esc0(msg) + '</div>';
   }
 
   /* ------------------------------------------------------------
@@ -1660,7 +1724,8 @@
     $('#src-url').addEventListener('input', function () {
       var raw = this.value.trim();
       /* الصق قالبًا فيه بدائل؟ ننقلك تلقائيًا للنوع المناسب */
-      if (CS.mySources.hasTokens(raw) && $('#src-type').value === 'site') {
+      if ($('#src-type').value === 'site' &&
+          (CS.mySources.hasTokens(raw) || CS.mySources.isMediaUrl(raw))) {
         $('#src-type').value = CS.mySources.guessType(raw);
         $('#src-adv').open = true;
       }

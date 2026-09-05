@@ -415,16 +415,26 @@
       body =
         '<div class="watch__frame"><iframe src="' + esc(url) +
         '" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture; fullscreen" ' +
-        'referrerpolicy="no-referrer-when-downgrade" loading="lazy" ' +
+        'referrerpolicy="strict-origin-when-cross-origin" loading="lazy" ' +
         'title="بحث ' + esc(term) + ' في ' + esc(active.name) + '"></iframe></div>' +
         '<div class="watch__bar">' + openBtn + '</div>' +
         '<div class="watch__note">🟡 طلع الإطار فوق فاضي؟ يعني ' + esc(active.name) +
         ' يمنع العرض داخل صفحات ثانية — استخدم الزر وبيفتح على نتيجة البحث مباشرة.</div>';
 
+    } else if (active.type === 'video') {
+      /* ملف مباشر: <video> يشغّله بلا CORS. HLS يُحمَّل له مشغّل وقت التشغيل. */
+      body = '<div class="watch__frame"><video class="watch__video" controls playsinline preload="metadata" ' +
+        'data-media-src="' + esc(url) + '"' + (item.backdrop ? ' poster="' + esc(item.backdrop) + '"' : '') +
+        '></video></div>' +
+        (CS.mySources.isHls(url)
+          ? '<div class="watch__note">📺 بث HLS — يحتاج سيرفرك يرسل ترويسات CORS عشان يشتغل خارج سفاري.</div>'
+          : '');
+
     } else if (active.type === 'embed') {
       body = '<div class="watch__frame"><iframe src="' + esc(url) +
-        '" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture; fullscreen" ' +
-        'referrerpolicy="origin" title="مشاهدة ' + esc(item.title) + '"></iframe></div>';
+        '" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture; clipboard-write" ' +
+        'referrerpolicy="strict-origin-when-cross-origin" loading="lazy" ' +
+        'title="مشاهدة ' + esc(item.title) + '"></iframe></div>';
 
     } else if (active.type === 'link') {
       body = '<div class="watch__bar"><a class="btn" target="_blank" rel="noopener noreferrer" href="' +

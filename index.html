@@ -368,6 +368,8 @@
       <p class="field__hint">
         🎬 الصق <b>رابط الموقع فقط</b> — مثال <code dir="ltr">https://example.com</code> —
         وRANHUB يبني بنفسه رابط البحث داخله عن كل عمل بالاسم والسنة. بدون مفتاح API ولا قوالب.
+        <br>🎞️ وإذا عندك رابط ملف مباشر من سيرفرك (<code dir="ltr">.mp4</code> أو
+        <code dir="ltr">.m3u8</code>) الصقه بنفس الخانة — يتعرّف عليه ويشغّله داخل الصفحة.
       </p>
 
       <div class="srclist" id="src-list"></div>
@@ -408,6 +410,7 @@
             <span class="field__label">النوع</span>
             <select id="src-type">
               <option value="site">موقع كامل — يبحث فيه بالاسم</option>
+              <option value="video">ملف فيديو مباشر (MP4 أو HLS)</option>
               <option value="embed">مشغّل داخل الصفحة (قالب)</option>
               <option value="link">رابط يفتح في تبويب جديد</option>
               <option value="api">API يرجّع رابط تشغيل</option>
