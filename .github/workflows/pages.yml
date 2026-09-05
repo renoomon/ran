@@ -1,8 +1,15 @@
+# نشر الموقع على GitHub Pages.
+#
+# هذا الملف مطلوب فقط لو اخترت مصدر Pages = "GitHub Actions".
+# لو اخترت "Deploy from a branch" فـ GitHub ينشر بنفسه عند كل push
+# وما تحتاج هذا الـworkflow أبدًا.
+#
+# ملاحظة: GITHUB_TOKEN ما يقدر ينشئ موقع Pages من الصفر،
+# فلازم تفعّل Pages مرة وحدة يدويًا من Settings ← Pages.
+
 name: Deploy CineSearch to GitHub Pages
 
 on:
-  push:
-    branches: [claude/movies-series-search-site-o86zjo]
   workflow_dispatch:
 
 permissions:
@@ -20,16 +27,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Enable and configure Pages
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
+      - uses: actions/configure-pages@v5
 
       - name: Collect the static site
         run: |
           mkdir -p _site
           cp index.html _site/
           cp -r assets _site/
+          touch _site/.nojekyll
 
       - uses: actions/upload-pages-artifact@v3
         with:
