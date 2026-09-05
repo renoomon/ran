@@ -293,15 +293,16 @@
 
   /* واصفات رسمية موجودة فعلًا في release_dates وموزّعة على الدول،
      فنجمعها من كلها — أمريكا غالبًا فاضية وكندا والبرازيل أغنى */
-  var DESC_AR = [
-    [/sexual content|sexual/i, 'محتوى جنسي'],
-    [/\bsex\b/i, 'مشاهد جنسية'],
-    [/nudity|nude/i, 'مشاهد تعرٍّ'],
-    [/extreme violence/i, 'عنف شديد'],
-    [/violence|gore/i, 'عنف'],
-    [/substance abuse|drug/i, 'مخدرات'],
-    [/coarse language|inappropriate language|profanity/i, 'ألفاظ نابية'],
-    [/fear|horror|disturbing/i, 'مشاهد مرعبة']
+  /* واصفات المجالس تُوحَّد على مصطلح إنجليزي واحد — الوسم قابل للضغط
+     فلازم يكون مصطلحًا يفهمه بحث TMDB لا ترجمة عربية */
+  var DESC_EN = [
+    [/nudity|nude/i, 'nudity'],
+    [/\bsex\b|sexual content|sexual/i, 'sex'],
+    [/extreme violence/i, 'extreme violence'],
+    [/violence|gore/i, 'violence'],
+    [/substance abuse|drug/i, 'drugs'],
+    [/coarse language|inappropriate language|profanity/i, 'profanity'],
+    [/fear|horror|disturbing/i, 'horror']
   ];
 
   function descriptorsOf(json, type) {
@@ -311,7 +312,7 @@
         ? (block.release_dates || []).reduce(function (a, d) { return a.concat(d.descriptors || []); }, [])
         : (block.descriptors || []);
       list.forEach(function (raw) {
-        DESC_AR.forEach(function (pair) {
+        DESC_EN.forEach(function (pair) {
           if (pair[0].test(String(raw)) && out.indexOf(pair[1]) === -1) out.push(pair[1]);
         });
       });
@@ -320,15 +321,17 @@
   }
 
   /* كلمات TMDB المفتاحية — الأرقام مؤكَّدة من استجابات حقيقية */
+  /* الوسم يحمل مصطلح TMDB الإنجليزي نفسه — لأنه هو اللي يشتغل
+     لما تضغط الوسم فيبحث عنه ككلمة مفتاحية حقيقية */
   var HEAT = [
-    { re: /^(pornography|porn|hardcore|porn star|porn actress|adult filmmaking)$/i, w: 100, ar: 'إباحي صريح' },
-    { re: /(softcore|erotic|erotica|sexploitation)/i,      w: 78, ar: 'إيروتيك' },
-    { re: /(full frontal nudity|frontal nudity)/i,         w: 74, ar: 'تعرٍّ كامل' },
-    { re: /(sex scene|explicit sex|graphic sex|unsimulated sex)/i, w: 68, ar: 'مشاهد جنسية' },
-    { re: /^(female nudity|male nudity|nudity|topless)$/i,  w: 62, ar: 'مشاهد تعرٍّ' },
-    { re: /^(sex|sexuality|sexual)$/i,                      w: 46, ar: 'محتوى جنسي' },
-    { re: /(bdsm|fetish|voyeurism|orgy|threesome)/i,        w: 55, ar: 'فتِش' },
-    { re: /(strip club|stripper|prostitution|prostitute|brothel)/i, w: 40, ar: 'بغاء/تعرٍّ' }
+    { re: /^(pornography|porn|hardcore|porn star|porn actress|adult filmmaking)$/i, w: 100, en: 'pornography' },
+    { re: /(softcore|erotic|erotica|sexploitation)/i,      w: 78, en: 'erotic' },
+    { re: /(full frontal nudity|frontal nudity)/i,         w: 74, en: 'full frontal nudity' },
+    { re: /(sex scene|explicit sex|graphic sex|unsimulated sex)/i, w: 68, en: 'sex scene' },
+    { re: /^(female nudity|male nudity|nudity|topless)$/i,  w: 62, en: 'nudity' },
+    { re: /^(sex|sexuality|sexual)$/i,                      w: 46, en: 'sex' },
+    { re: /(bdsm|fetish|voyeurism|orgy|threesome)/i,        w: 55, en: 'bdsm' },
+    { re: /(strip club|stripper|prostitution|prostitute|brothel)/i, w: 40, en: 'prostitution' }
   ];
 
   /**
@@ -341,21 +344,21 @@
     /* الواصفات الرسمية أقوى دليل — تجي من مجالس التصنيف نفسها */
     (descriptors || []).forEach(function (d) {
       if (tags.indexOf(d) === -1) tags.push(d);
-      if (/تعرٍّ/.test(d)) score = Math.max(score, 70);
-      else if (/مشاهد جنسية/.test(d)) score = Math.max(score, 66);
-      else if (/محتوى جنسي/.test(d)) score = Math.max(score, 48);
+      if (/nudity/i.test(d)) score = Math.max(score, 70);
+      else if (/\bsex\b/i.test(d)) score = Math.max(score, 66);
+      else if (/sexual/i.test(d)) score = Math.max(score, 48);
     });
 
     (keywords || []).forEach(function (k) {
       var name = (k && k.name) || '';
       HEAT.forEach(function (h) {
         if (!h.re.test(name)) return;
-        if (tags.indexOf(h.ar) === -1) tags.push(h.ar);
+        if (tags.indexOf(h.en) === -1) tags.push(h.en);
         score = Math.max(score, h.w);
       });
     });
 
-    if (adult) { score = 100; if (tags.indexOf('إباحي صريح') === -1) tags.unshift('إباحي صريح'); }
+    if (adult) { score = 100; if (tags.indexOf('pornography') === -1) tags.unshift('pornography'); }
     return { score: score, tags: tags.slice(0, 6) };
   }
 

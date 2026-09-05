@@ -369,7 +369,9 @@
     var q = String(query || '').trim();
     if (!q) return Promise.resolve({ items: [], meta: {} });
 
-    mode = 'auto';   /* وضع واحد ذكي — أزلنا اختيار الأنماط */
+    /* البحث العادي وضع واحد ذكي — أزلنا أزرار اختيار الأنماط.
+       يبقى «theme» للوسوم: ضغطة الوسم كلمة مفتاحية صرفة لا عنوان. */
+    mode = mode === 'theme' ? 'theme' : 'auto';
     var intent = mode === 'auto' ? detectIntent(q) : mode;
     var isAr = CS.util.isArabic(q);
     var meta = { query: q, mode: mode, intent: intent, engines: [], translated: '', noKey: !CS.hasKey() };
@@ -381,10 +383,12 @@
       if (qEn && qEn !== q) meta.translated = qEn;
 
       var jobs = [];
-      /* الاسم دائمًا، والقصة دائمًا (هي جوهر الموقع)، والثيمة للأوصاف فقط */
-      var wantTitle = true;
-      var wantPlot  = true;
-      var wantTheme = intent !== 'title';
+      /* بحث الوسم: كلمة مفتاحية صرفة — يعرض الأعمال اللي تحمل الوسم لا اللي اسمها كذا،
+         فنشغّل محرّك الثيمة وحده وإلا امتلأت النتيجة بمطابقات أسماء لا علاقة لها */
+      var tagOnly   = mode === 'theme';
+      var wantTitle = !tagOnly;
+      var wantPlot  = !tagOnly;
+      var wantTheme = tagOnly || intent !== 'title';
 
       /* فحص صحة TMDB بالتوازي — عشان نفرّق بين «ما فيه نتيجة» و«المفتاح ميت» */
       if (CS.hasKey()) {

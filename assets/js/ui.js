@@ -202,16 +202,8 @@
     ex = ex || {};
     var blocks = '';
 
-    if (ex.omdb) {
-      var o = ex.omdb, rows = '';
-      if (o.imdb)       rows += metaRow('IMDb', o.imdb + '/10' + (o.imdbVotes ? ' · ' + o.imdbVotes : ''));
-      if (o.rotten)     rows += metaRow('Rotten Tomatoes', o.rotten);
-      if (o.metacritic) rows += metaRow('Metacritic', o.metacritic + '/100');
-      if (o.awards)     rows += metaRow('الجوائز', o.awards);
-      if (o.boxOffice)  rows += metaRow('شبّاك التذاكر', o.boxOffice);
-      if (rows) blocks += '<h3 class="sec__title">تقييمات المواقع <span class="sec__note">OMDb</span></h3>' +
-                          '<div class="metatable">' + rows + '</div>';
-    }
+    /* تقييمات OMDb انمسحت من هنا: صارت تتكرّر حرفيًا مع بطاقة OMDb
+       في «بيانات إضافية» اللي يتحكّم فيها المشغّل بنفسه */
 
     if (ex.tvmaze) {
       var t = ex.tvmaze, r2 = '';
@@ -261,9 +253,11 @@
     var heatHtml = '';
     if (d.heat && d.heat.tags.length) {
       heatHtml = '<section><h3 class="sec__title">وسوم المحتوى ' +
-        '<span class="sec__note">من كلمات TMDB المفتاحية — بيانات حقيقية، لا تقدير</span></h3>' +
+        '<span class="sec__note">اضغط الوسم يعرض لك كل الأعمال اللي تحمله</span></h3>' +
         '<div class="tags">' + d.heat.tags.map(function (t) {
-          return '<span class="tag tag--heat">🔞 ' + esc(t) + '</span>';
+          /* الوسم مصطلح TMDB الإنجليزي نفسه، فالضغط يبحث عنه ككلمة مفتاحية حقيقية */
+          return '<a class="tag tag--heat" href="#/tag/' + esc(encodeURIComponent(t)) +
+            '" data-tag="' + esc(t) + '">#' + esc(String(t).replace(/\s+/g, '-')) + '</a>';
         }).join('') + '</div></section>';
     }
 

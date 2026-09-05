@@ -354,7 +354,7 @@
     return bits.join(' · ');
   }
 
-  function doSearch(query, skipHash) {
+  function doSearch(query, skipHash, mode) {
     query = String(query || '').trim();
     if (!query) { location.hash = '#/'; return; }
 
@@ -366,7 +366,7 @@
     suggestOff = true;
     hideSuggest();
     showView('results');
-    $('#results-title').textContent = '«' + query + '»';
+    $('#results-title').textContent = mode === 'theme' ? '#' + query.replace(/\s+/g, '-') : '«' + query + '»';
     $('#results-meta').textContent = 'يدور…';
     $('#results-grid').innerHTML = CS.ui.skeletons(12);
     $('#results-empty').hidden = true;
@@ -374,13 +374,13 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     if (!skipHash) {
-      var h = '#/s/' + encodeURIComponent(query);
+      var h = (mode === 'theme' ? '#/tag/' : '#/s/') + encodeURIComponent(query);
       if (location.hash !== h) { suppressRoute = true; location.hash = h; }
     }
 
     var token = ++searchToken;
 
-    CS.search.run(query).then(function (res) {
+    CS.search.run(query, mode || 'auto').then(function (res) {
       if (token !== searchToken) return;
       CS.state.results = res.items;
       CS.state.meta = res.meta;
@@ -773,7 +773,7 @@
     if (r.name === 'detail') { openDetail(r.type, r.id); return; }
     if (r.name === 'wiki')   { openWikiDetail(r.lang, r.title); return; }
     if (r.name === 'person') { openPerson(r.id); return; }
-    if (CS.state.view === 'results' && CS.state.query) { doSearch(CS.state.query, true); return; }
+    if (CS.state.view === 'results' && CS.state.query) { doSearch(CS.state.query, true, parseHash().mode); return; }
     if (CS.state.view === 'liked') { renderLiked(); return; }
     startFeed(currentTab());
   }
@@ -1196,6 +1196,9 @@
     if (parts[0] === 's' && parts.length >= 2) {
       return { name: 'search', query: decodeSafe(parts.slice(1).join('/')) };
     }
+    if (parts[0] === 'tag' && parts.length >= 2) {
+      return { name: 'search', query: decodeSafe(parts.slice(1).join('/')), mode: 'theme' };
+    }
     if (parts[0] === 'person' && parts[1]) return { name: 'person', id: parts[1] };
     if (parts[0] === 'work') parts = parts.slice(1);
 
@@ -1222,7 +1225,7 @@
 
     CS.state.backTo = location.hash || '#/';
 
-    if (r.name === 'search') { doSearch(r.query, true); return; }
+    if (r.name === 'search') { doSearch(r.query, true, r.mode); return; }
     if (r.name === 'liked')  { renderLiked(); return; }
 
     showView('home');
@@ -1368,6 +1371,14 @@
         if (e.metaKey || e.ctrlKey || e.shiftKey) return;
         e.preventDefault();
         goTo('#/person/' + person.dataset.person);
+        return;
+      }
+
+      var tag = e.target.closest('[data-tag]');
+      if (tag) {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+        e.preventDefault();
+        goTo('#/tag/' + encodeURIComponent(tag.dataset.tag));
         return;
       }
 
