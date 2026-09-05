@@ -383,6 +383,15 @@
       /* بحث بالاسم بالعربي: ويكيبيديا العربية أقوى مصدر لمطابقة العنوان */
       if (mode === 'auto' && intent === 'title') wantPlot = isAr || CS.util.words(q).length >= 3;
 
+      /* فحص صحة TMDB بالتوازي — عشان نفرّق بين «ما فيه نتيجة» و«المفتاح ميت» */
+      if (CS.hasKey()) {
+        jobs.push(
+          CS.tmdb.req('/configuration', {})
+            .then(function () { return []; })
+            .catch(function (e) { meta.tmdbError = CS.tmdb.explain(e); return []; })
+        );
+      }
+
       if (wantTitle) { meta.engines.push('title'); jobs.push(engineTitle(q, qEn)); }
       if (wantPlot)  {
         var asTitle = (mode === 'auto' && intent === 'title');
@@ -450,6 +459,18 @@
   function discoverRows() {
     if (!CS.hasKey()) return Promise.resolve([]);
 
+    /* نتحقق أولًا إن TMDB يرد فعلًا، عشان نفرّق بين «ما فيه نتائج»
+       و«المفتاح ميت / الشبكة حاجبة» ونقولها للمستخدم بدل شاشة فاضية */
+    return CS.tmdb.req('/configuration', {}).then(function () {
+      return buildRows();
+    }).catch(function (err) {
+      var e = new Error('TMDB_DOWN');
+      e.reason = CS.tmdb.explain(err);
+      throw e;
+    });
+  }
+
+  function buildRows() {
     var p = CS.taste.profile();
     var seen = CS.taste.seenSet();
     var taken = {};

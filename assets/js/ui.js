@@ -367,13 +367,27 @@
   /* ---------- حالة فارغة ---------- */
 
   function emptyHtml(query, meta) {
+    meta = meta || {};
+
+    /* TMDB ما رد؟ هذي مشكلة اتصال، مو نتيجة بحث فاضية — نقولها صريحة */
+    if (meta.tmdbError) {
+      return '<b>🔴 TMDB ما رد</b>' +
+        '<p>' + esc(meta.tmdbError) + '</p>' +
+        '<div style="margin-top:1.2rem;display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap">' +
+        '<button class="btn" id="empty-test">🔍 افحص الاتصال</button></div>' +
+        '<p style="margin-top:1rem;font-size:.82rem">🟢 جرّب وضع «بوصف القصة» — يشتغل على ويكيبيديا بدون TMDB.</p>';
+    }
+
     var tips = [
       'اكتب المشهد اللي تذكره بالتفصيل: «رجل يجلس على كرسي متحرك ويراقب جيرانه».',
       'جرّب بالإنجليزي — تغطية ويكيبيديا الإنجليزية أوسع بكثير.',
       'بدّل طريقة البحث من الأزرار فوق (بالاسم / بوصف القصة / بالثيمة).',
       'اذكر أسماء الممثلين أو المخرج لو تذكرها.'
     ];
-    if (meta && meta.noKey) {
+    if (meta.certFiltered) {
+      tips.unshift('فلتر التصنيف العمري شغّال (' + esc(meta.certFiltered) + ') — رجّعه لـ«كل التصنيفات».');
+    }
+    if (meta.noKey) {
       tips.unshift('أضف مفتاح TMDB المجاني من الإعدادات ⚙️ — بيفتح لك البوسترات والتقييمات والأعمال المشابهة.');
     }
     return '<b>🔴 ما لقيت شي لـ «' + esc(query) + '»</b>' +

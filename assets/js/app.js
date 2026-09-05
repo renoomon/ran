@@ -85,8 +85,8 @@
     CS.search.discoverRows().then(function (rows) {
       if (CS.state.view !== 'home') return;
       if (!rows.length) {
-        wrap.innerHTML = '<div class="empty"><b>🔴 ما وصلني شي من TMDB</b>' +
-          '<p>تأكد من اتصالك. البحث بوصف القصة (ويكيبيديا) شغّال على أي حال.</p></div>';
+        wrap.innerHTML = '<div class="empty"><b>🟡 ما فيه محتوى يعرض</b>' +
+          '<p>غالبًا فلتر التصنيف العمري ضيّق. جرّب «كل التصنيفات».</p></div>';
         return;
       }
       var all = [];
@@ -96,8 +96,19 @@
         return CS.ui.row(r.title, r.hint, r.items.slice(0, 20));
       }).join('');
       hydrateCerts(wrap, all);
-    }).catch(function () {
-      wrap.innerHTML = '<div class="empty">🔴 ما قدرت أجيب بيانات TMDB. تأكد من الاتصال.</div>';
+    }).catch(function (err) {
+      if (CS.state.view !== 'home') return;
+      var why = err && err.reason ? err.reason : 'سبب غير معروف';
+      wrap.innerHTML =
+        '<div class="empty"><b>🔴 ما قدرت أوصل لـ TMDB</b>' +
+        '<p>' + CS.util.esc(why) + '</p>' +
+        '<div style="margin-top:1.2rem;display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap">' +
+        '<button class="btn" id="empty-test">🔍 افحص الاتصال</button>' +
+        '<button class="btn btn--ghost" id="empty-retry">أعد المحاولة</button></div>' +
+        '<p style="margin-top:1rem;font-size:.82rem">🟢 البحث بوصف القصة (ويكيبيديا) يضل شغّالًا — جرّبه من فوق.</p></div>';
+
+      var t = $('#empty-test'); if (t) t.addEventListener('click', function () { openSettings(); testConnection(); });
+      var r2 = $('#empty-retry'); if (r2) r2.addEventListener('click', renderHome);
     });
   }
 
@@ -153,11 +164,20 @@
       if (!filtered.length) {
         grid.innerHTML = '';
         empty.hidden = false;
+
+        var meta = CS.state.meta || {};
+        if (CS.certs.currentFilter() !== 'all') meta.certFiltered = CS.certs.current().label;
+
         empty.innerHTML = CS.state.results.length
-          ? '<b>🟡 الفلاتر ضيّقة</b><p>ما فيه نتيجة تطابق الفلاتر الحالية. اضغط «تصفير».</p>'
-          : CS.ui.emptyHtml(CS.state.query, CS.state.meta || {});
+          ? '<b>🟡 الفلاتر ضيّقة</b><p>ما فيه نتيجة تطابق الفلاتر الحالية' +
+            (CS.certs.matureOnly() ? ' — فلتر «' + CS.util.esc(CS.certs.current().label) + '» يستبعد كل شي دونه' : '') +
+            '. اضغط «تصفير».</p>'
+          : CS.ui.emptyHtml(CS.state.query, meta);
         more.hidden = true;
         $('#results-meta').textContent = buildMetaText(0);
+
+        var t2 = $('#empty-test');
+        if (t2) t2.addEventListener('click', function () { openSettings(); testConnection(); });
         return;
       }
 
@@ -518,22 +538,75 @@
     $('#key-notice').hidden = CS.hasKey() || off;
   }
 
+  /* ---------- زر «تحقق من الاتصال» ---------- */
+
+  function testConnection() {
+    var btn = $('#btn-test-key');
+    var box = $('#key-state');
+    var key = $('#api-key').value.trim();
+
+    btn.disabled = true;
+    var label = btn.textContent;
+    btn.textContent = '⏳ يفحص…';
+    box.className = 'keystate is-wait';
+    box.textContent = 'أفحص الاتصال بـ TMDB…';
+
+    CS.tmdb.diagnose(key || null).then(function (rep) {
+      btn.disabled = false;
+      btn.textContent = label;
+
+      var rows = rep.steps.map(function (s) {
+        return '<div class="diag__row"><span>' + (s.ok ? '🟢' : '🔴') + '</span>' +
+               '<b>' + CS.util.esc(s.name) + '</b>' +
+               '<i>' + CS.util.esc(s.detail) + '</i></div>';
+      }).join('');
+
+      box.className = 'keystate ' + (rep.ok ? 'is-ok' : 'is-bad');
+      box.innerHTML =
+        '<div class="diag__head">' + (rep.ok
+          ? '🟢 كل شي شغّال — الموقع يقدر يبحث ويجيب البيانات'
+          : '🔴 فيه خلل — تفاصيله تحت') + '</div>' + rows +
+        (rep.ok ? '' :
+          '<div class="diag__tip">' + CS.util.esc(hintFor(rep)) + '</div>');
+    }).catch(function (e) {
+      btn.disabled = false;
+      btn.textContent = label;
+      box.className = 'keystate is-bad';
+      box.textContent = '🔴 ما قدرت أكمّل الفحص: ' + (e && e.message || e);
+    });
+  }
+
+  function hintFor(rep) {
+    var first = rep.steps.filter(function (s) { return !s.ok; })[0] || {};
+    var d = first.detail || '';
+    if (/401|رفض/.test(d)) return 'الحل: خذ مفتاحًا مجانيًا من themoviedb.org والصقه في الخانة فوق ثم احفظ.';
+    if (/429|حد الطلبات/.test(d)) return 'الحل: انتظر دقيقة وأعد الفحص، أو استخدم مفتاحك الخاص.';
+    if (/ما وصلت/.test(d)) return 'الحل: جرّب شبكة ثانية أو بيانات الجوال — بعض الشبكات في المنطقة تحجب api.themoviedb.org. البحث بوصف القصة عبر ويكيبيديا يضل شغّالًا.';
+    return 'جرّب مرة ثانية بعد شوي، وإذا تكرر أرسل لي نص الخطأ.';
+  }
+
   /* ============================================================
      فلتر التصنيف العمري
      ============================================================ */
 
   function setCertFilter(value) {
-    /* الإباحي يحتاج موافقة صريحة مرة وحدة */
-    if (value === 'adult' && !CS.store.get(CS.KEYS.adultOn, false)) {
+    var f = CS.certs.FILTERS[value] || CS.certs.FILTERS.all;
+
+    /* أوضاع الكبار تحتاج موافقة صريحة مرة وحدة */
+    if (f.needsAdult && !CS.store.get(CS.KEYS.adultOn, false)) {
       var ok = window.confirm(
-        'تبي تشغّل عرض المحتوى الإباحي الصريح (18+ بدون تغطية)؟\n\n' +
-        'هذا يفعّل include_adult في TMDB ويعرض أعمالًا للبالغين فقط. ' +
-        'تقدر تطفيه في أي وقت من نفس القائمة.'
+        'وضع «للكبار فقط»\n\n' +
+        'هذا الخيار يعرض محتوى ١٨+ فقط — ما يعرض شي عام. ' +
+        'ويفعّل include_adult عند TMDB.\n\n' +
+        'تأكد إنك بالغ وإن استخدامه مسؤوليتك. تبي تشغّله؟'
       );
-      if (!ok) { $('#cert-filter').value = CS.certs.currentFilter(); return; }
+      if (!ok) {
+        $$('.cert-filter').forEach(function (s) { s.value = CS.certs.currentFilter(); });
+        return;
+      }
       CS.store.set(CS.KEYS.adultOn, true);
     }
-    if (value !== 'adult') CS.store.set(CS.KEYS.adultOn, false);
+    if (!f.needsAdult) CS.store.set(CS.KEYS.adultOn, false);
 
     CS.store.set(CS.KEYS.certTier, value);
     CS.state.shown = LIM.pageSize;
@@ -776,6 +849,7 @@
         return;
       }
 
+      if (e.target.closest('[data-fatal-dismiss]')) { clearFatal(); return; }
       if (e.target.closest('[data-back]')) { goBack(); return; }
       if (e.target.closest('[data-close-settings]')) { closeSettings(); return; }
       if (e.target.closest('[data-route-home]')) { e.preventDefault(); location.hash = '#/'; return; }
@@ -818,6 +892,7 @@
 
     /* --- الإعدادات --- */
     $('#btn-save-settings').addEventListener('click', saveSettings);
+    $('#btn-test-key').addEventListener('click', testConnection);
     $('#btn-clear-key').addEventListener('click', function () {
       $('#api-key').value = '';
       CS.state.userKey = '';
@@ -847,24 +922,102 @@
      الإقلاع
      ============================================================ */
 
+  /* ------------------------------------------------------------
+     حزام أمان: أي خطأ ما يخلي الصفحة ميتة
+     ------------------------------------------------------------ */
+
+  /* لو نسخة HTML المخزّنة في المتصفح ما تطابق ملفات JS، الصفحة كانت تموت
+     قبل ما تُربط الأزرار. الحين نكشفها ونطلب تحديثًا قسريًا. */
+  var REQUIRED = ['util', 'store', 'state', 'taste', 'certs', 'tmdb', 'wiki', 'sources', 'links', 'search', 'ui'];
+
+  function missingModules() {
+    return REQUIRED.filter(function (m) { return !CS[m]; });
+  }
+
+  function fatal(title, detail, showReload) {
+    var bar = document.getElementById('fatal');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'fatal';
+      bar.className = 'fatal';
+      document.body.insertBefore(bar, document.body.firstChild);
+    }
+    bar.innerHTML =
+      '<b>🔴 ' + CS.util.esc(title) + '</b>' +
+      '<span>' + CS.util.esc(detail) + '</span>' +
+      (showReload ? '<button class="notice__cta" id="fatal-reload">حدّث الصفحة الآن</button>' : '') +
+      '<button class="notice__x" data-fatal-dismiss aria-label="إخفاء">&times;</button>';
+    bar.hidden = false;
+
+    var rl = document.getElementById('fatal-reload');
+    if (rl) rl.addEventListener('click', hardReload);
+  }
+
+  /* تحديث قسري: يتجاوز كاش المتصفح بإضافة بصمة وقت للعنوان */
+  function hardReload() {
+    var url = location.href.split('#')[0].split('?')[0];
+    location.replace(url + '?fresh=' + Date.now() + location.hash);
+  }
+
+  function clearFatal() {
+    var bar = document.getElementById('fatal');
+    if (bar) bar.hidden = true;
+  }
+
   function boot() {
-    var moved = CS.taste.migrate();   /* المفضلة القديمة تصير إعجابات */
-    $('#lang-label').textContent = CS.state.lang === 'ar' ? 'ع' : 'EN';
-    setModeChip(CS.state.mode);
-    updateLikeCount();
-    if (moved) setTimeout(function () { CS.ui.toast('👍 نقلت ' + moved + ' من مفضلتك القديمة'); }, 900);
-    refreshKeyNotice();
-    $$('.cert-filter').forEach(function (s) { s.value = CS.certs.currentFilter(); });
-    bind();
+    /* ١) نتأكد إن كل الوحدات موجودة قبل أي شي */
+    var missing = missingModules();
+    if (missing.length) {
+      fatal('نسخة الصفحة قديمة',
+            'متصفحك مخزّن نسخة قديمة من الموقع (' + missing.join('، ') + ' ناقصة). اضغط تحديث.',
+            true);
+      return;   /* ما نكمل — الصفحة ناقصة فعلًا */
+    }
+
+    /* ٢) الأزرار أول شي، عشان الصفحة تفضل تتفاعل مهما صار بعدها */
+    try {
+      bind();
+    } catch (e) {
+      fatal('ما قدرت أربط الأزرار', String(e && e.message || e), true);
+      return;
+    }
+
+    /* ٣) بقية التهيئة — كل خطوة لحالها عشان وحدة ما تسقّط الباقي */
+    step(function () { $('#lang-label').textContent = CS.state.lang === 'ar' ? 'ع' : 'EN'; });
+    step(function () { setModeChip(CS.state.mode); });
+    step(function () {
+      var moved = CS.taste.migrate();
+      if (moved) setTimeout(function () { CS.ui.toast('👍 نقلت ' + moved + ' من مفضلتك القديمة'); }, 900);
+    });
+    step(updateLikeCount);
+    step(refreshKeyNotice);
+    step(function () { $$('.cert-filter').forEach(function (s) { s.value = CS.certs.currentFilter(); }); });
 
     var start = CS.hasKey() ? CS.tmdb.loadGenres().catch(function () {}) : Promise.resolve();
-    start.then(onRoute);
+    start.then(function () {
+      try { onRoute(); }
+      catch (e) { fatal('ما قدرت أفتح الصفحة', String(e && e.message || e), true); }
+    });
   }
+
+  function step(fn) {
+    try { fn(); } catch (e) {
+      if (window.console) console.error('[cinesearch] خطوة إقلاع فشلت:', e);
+    }
+  }
+
+  /* أي خطأ غير متوقع يظهر للمستخدم بدل ما تصير الصفحة ميتة بصمت */
+  window.addEventListener('error', function (e) {
+    if (!e || !e.message) return;
+    fatal('صار خطأ في الصفحة', e.message, true);
+  });
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
   } else {
     boot();
   }
+
+  CS.app = { fatal: fatal, clearFatal: clearFatal, hardReload: hardReload };
 
 })(window.CS);

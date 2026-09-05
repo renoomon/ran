@@ -334,6 +334,60 @@
       .catch(function (err) { CS.state.apiKey = prev; throw err; });
   }
 
+  /**
+   * فحص كامل للاتصال — يرجّع تقرير مفصّل بدل رمي خطأ.
+   * { ok, key, steps:[{name, ok, detail}] }
+   */
+  function diagnose(key) {
+    var prev = CS.state.apiKey;
+    if (key) CS.state.apiKey = key;
+
+    var steps = [];
+    function run(name, path, params) {
+      return req(path, params || {}, { fresh: true })
+        .then(function (json) {
+          steps.push({ name: name, ok: true, detail: describe(path, json) });
+          return true;
+        })
+        .catch(function (err) {
+          steps.push({ name: name, ok: false, detail: explain(err) });
+          return false;
+        });
+    }
+
+    return run('الاتصال والمفتاح', '/configuration')
+      .then(function (ok) {
+        if (!ok) return false;
+        return run('البحث', '/search/movie', { query: 'inception', page: 1 });
+      })
+      .then(function (ok) {
+        if (!ok) return false;
+        return run('الرائج', '/trending/all/week');
+      })
+      .then(function () {
+        if (key) CS.state.apiKey = prev;
+        var allOk = steps.length > 0 && steps.every(function (s) { return s.ok; });
+        return { ok: allOk, steps: steps };
+      });
+  }
+
+  function describe(path, json) {
+    if (path === '/configuration') return 'المفتاح مقبول من TMDB';
+    var n = (json.results || []).length;
+    return n ? 'رجعت ' + n + ' نتيجة' : 'اتصل بنجاح لكن بلا نتائج';
+  }
+
+  function explain(err) {
+    var m = err && err.message || '';
+    if (m === 'BAD_KEY')     return 'TMDB رفض المفتاح (401) — المفتاح غلط أو ملغى';
+    if (m === 'RATE_LIMIT')  return 'تجاوزت حد الطلبات (429) — انتظر شوي';
+    if (m === 'NO_KEY')      return 'ما فيه مفتاح مضبوط';
+    if (/^HTTP_/.test(m))    return 'TMDB رد بخطأ ' + m.replace('HTTP_', '');
+    if (/Failed to fetch|NetworkError|Load failed/i.test(m))
+      return 'ما وصلت لـ TMDB إطلاقًا — إنترنت مقطوع، أو الشبكة/المزوّد حاجب api.themoviedb.org';
+    return m || 'خطأ غير معروف';
+  }
+
   CS.tmdb = {
     req: req,
     img: img,
@@ -352,7 +406,9 @@
     topRated: topRated,
     nowPlaying: nowPlaying,
     airingToday: airingToday,
-    testKey: testKey
+    testKey: testKey,
+    diagnose: diagnose,
+    explain: explain
   };
 
 })(window.CS);

@@ -590,7 +590,33 @@ main{ max-width:1360px; margin-inline:auto; padding:clamp(1.2rem, 3vw, 2.4rem) c
 .field__hint a{ color:var(--gold-soft); text-decoration:underline; text-underline-offset:3px; }
 .field-row{ display:flex; gap:.8rem; flex-wrap:wrap; }
 
-.keystate{ font-size:.83rem; padding:.7rem .9rem; border-radius:var(--radius-sm); display:none; }
+/* شريط الخطأ الفادح — يظهر فوق كل شي لما تموت الصفحة */
+.fatal{
+  position:sticky; top:0; z-index:300;
+  display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;
+  padding:.75rem clamp(.9rem, 3vw, 2rem);
+  background:linear-gradient(90deg, rgba(224,82,63,.22), rgba(224,82,63,.10));
+  border-bottom:1px solid rgba(224,82,63,.45);
+  color:#ffd9d2; font-size:.87rem;
+}
+.fatal b{ font-weight:800; }
+.fatal span{ color:#f0b8ae; font-size:.82rem; }
+
+/* تقرير فحص الاتصال */
+.diag__head{ font-weight:800; margin-bottom:.5rem; }
+.diag__row{
+  display:flex; align-items:baseline; gap:.5rem;
+  padding:.28rem 0; border-top:1px solid rgba(255,255,255,.07);
+  font-size:.82rem;
+}
+.diag__row b{ font-weight:700; min-width:8ch; }
+.diag__row i{ font-style:normal; opacity:.85; }
+.diag__tip{
+  margin-top:.6rem; padding-top:.55rem; border-top:1px solid rgba(255,255,255,.1);
+  font-size:.8rem; font-weight:700;
+}
+
+.keystate{ font-size:.83rem; padding:.7rem .9rem; border-radius:var(--radius-sm); display:none; line-height:1.7; }
 .keystate.is-ok{ display:block; background:rgba(63,191,127,.12); border:1px solid rgba(63,191,127,.3); color:#8fe3b8; }
 .keystate.is-bad{ display:block; background:rgba(224,82,63,.12); border:1px solid rgba(224,82,63,.3); color:#f0a294; }
 .keystate.is-wait{ display:block; background:var(--surface); border:1px solid var(--line); color:var(--text-2); }

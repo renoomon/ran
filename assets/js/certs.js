@@ -164,13 +164,18 @@
 
   /* ---------- فلتر المستوى ---------- */
 
+  /**
+   * mature: هذا فلتر «للكبار فقط» — يعرض المستويات المحددة ولا شي غيرها،
+   *         وأي عمل بلا تصنيف معروف يُستبعد (ما نبي محتوى عام يتسلل).
+   * needsAdult: يحتاج موافقة صريحة قبل التفعيل.
+   */
   var FILTERS = {
     all:    { label: 'كل التصنيفات', min: 0, max: 4 },
-    family: { label: 'عائلي فقط',     min: 0, max: 1 },
-    teen:   { label: '+13 وأقل',      min: 0, max: 2 },
-    m17:    { label: '+17 فقط',       min: 3, max: 3 },
-    m18:    { label: '+18 فقط',       min: 4, max: 4 },
-    adult:  { label: '🔥 يشمل الإباحي', min: 0, max: 5 }
+    family: { label: 'عائلي فقط',    min: 0, max: 1 },
+    teen:   { label: '+13 وأقل',     min: 0, max: 2 },
+    m17:    { label: '+17 فقط',      min: 3, max: 3, mature: true },
+    m18:    { label: '+18 فما فوق',  min: 4, max: 5, mature: true, needsAdult: true },
+    adult:  { label: 'إباحي صريح فقط', min: 5, max: 5, mature: true, needsAdult: true }
   };
 
   function currentFilter() {
@@ -178,22 +183,35 @@
     return FILTERS[k] ? k : 'all';
   }
 
+  function current() { return FILTERS[currentFilter()]; }
+
+  /* المحتوى الإباحي يظهر فقط مع فلتر يطلبه + موافقة محفوظة */
   function adultAllowed() {
-    return currentFilter() === 'adult' && CS.store.get(CS.KEYS.adultOn, false) === true;
+    var f = current();
+    return !!(f.needsAdult && f.max === 5 && CS.store.get(CS.KEYS.adultOn, false) === true);
   }
+
+  /* هل الفلتر الحالي «للكبار فقط»؟ يعني ما نعرض إلا المستويات المطلوبة */
+  function matureOnly() { return !!current().mature; }
 
   /**
    * هل يعدّي العنصر الفلتر الحالي؟
-   * ترجع true / false / null (null = التصنيف لسه ما وصل)
+   * ترجع true / false / null (null = التصنيف لسه ما وصل، انتظر)
    */
   function passes(item) {
-    var f = FILTERS[currentFilter()];
+    var key = currentFilter();
+    var f = FILTERS[key];
     var info = cachedFor(item);
 
-    if (item && item.adult) return adultAllowed();
-    if (currentFilter() === 'all') return true;      /* غير الإباحي المستبعد فوق */
-    if (info === undefined) return null;             /* ما وصل بعد */
-    if (info === null) return currentFilter() === 'adult';  /* بلا تصنيف معروف */
+    /* الإباحي: يظهر فقط لو الفلتر يطلب المستوى ٥ والموافقة محفوظة */
+    if (item && item.adult) return f.max === 5 && adultAllowed();
+
+    if (key === 'all') return true;
+    if (info === undefined) return null;          /* التصنيف لسه ما وصل */
+
+    /* بلا تصنيف معروف: في وضع «للكبار فقط» نستبعده حتى ما يتسرّب محتوى عام */
+    if (info === null) return f.mature ? false : true;
+
     return info.tier >= f.min && info.tier <= f.max;
   }
 
@@ -202,7 +220,8 @@
     family: { 'certification.lte': 'PG' },
     teen:   { 'certification.lte': 'PG-13' },
     m17:    { certification: 'R' },
-    m18:    { certification: 'NC-17' }
+    m18:    { certification: 'NC-17' },
+    adult:  { certification: 'NC-17' }
   };
 
   function discoverCert(type) {
@@ -217,6 +236,8 @@
   CS.certs = {
     TIERS: TIERS,
     discoverCert: discoverCert,
+    matureOnly: matureOnly,
+    current: current,
     FILTERS: FILTERS,
     tierFromCert: tierFromCert,
     tierInfo: tierInfo,
