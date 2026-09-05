@@ -44,7 +44,10 @@
     { id: 'q',       label: '/?q=',                       tpl: '{origin}/?q={title}' },
     { id: 'findq',   label: '/find?q=',                   tpl: '{origin}/find?q={title}' },
     { id: 'query',   label: '/?query=',                   tpl: '{origin}/?query={title}' },
-    { id: 'keyword', label: '/?keyword=',                 tpl: '{origin}/?keyword={title}' }
+    { id: 'keyword', label: '/?keyword=',                 tpl: '{origin}/?keyword={title}' },
+    { id: 'dooplay', label: '?s= مع أفلام فقط (DooPlay)',  tpl: '{origin}/?s={title}&post_type=movies' },
+    { id: 'maccms',  label: 'MacCMS / 苹果CMS',             tpl: '{origin}/index.php/vod/search.html?wd={title}' },
+    { id: 'drupal',  label: 'دروبال /search/node',         tpl: '{origin}/search/node?keys={title}' }
   ];
 
   function patternById(id) {
@@ -55,18 +58,24 @@
   /* مواقع معروفة رابط بحثها موثّق — تُضبط تلقائيًا لما تلصق نطاقها */
   var KNOWN = {
     'netflix.com':        { pattern: 'custom', tpl: 'https://www.netflix.com/search?q={title}' },
-    'primevideo.com':     { pattern: 'custom', tpl: 'https://www.primevideo.com/search?phrase={title}' },
+    'primevideo.com':     { pattern: 'custom', tpl: 'https://www.primevideo.com/search/ref=atv_nb_sug?phrase={title}' },
     'disneyplus.com':     { pattern: 'custom', tpl: 'https://www.disneyplus.com/search?q={title}' },
     'tv.apple.com':       { pattern: 'custom', tpl: 'https://tv.apple.com/search?term={title}' },
     'youtube.com':        { pattern: 'custom', tpl: 'https://www.youtube.com/results?search_query={title}' },
-    'shahid.mbc.net':     { pattern: 'custom', tpl: 'https://shahid.mbc.net/search?q={title}' },
-    'starzplay.com':      { pattern: 'custom', tpl: 'https://starzplay.com/search?q={title}' },
-    'watchit.com':        { pattern: 'custom', tpl: 'https://www.watchit.com/search?q={title}' },
+    /* الخدمات العربية تحتاج مقطع اللغة في المسار */
+    'shahid.mbc.net':     { pattern: 'custom', tpl: 'https://shahid.mbc.net/ar/search?q={title}' },
+    'starzplay.com':      { pattern: 'custom', tpl: 'https://www.starzplay.com/ar/search?q={title}' },
+    'osnplus.com':        { pattern: 'custom', tpl: 'https://osnplus.com/ar-sa/search?q={title}' },
     'viu.com':            { pattern: 'custom', tpl: 'https://www.viu.com/ott/sa/ar/search?q={title}' },
-    'osnplus.com':        { pattern: 'custom', tpl: 'https://osnplus.com/ar/search?q={title}' },
+    'watchit.com':        { pattern: 'custom', tpl: 'https://www.watchit.com/search?q={title}' },
     'letterboxd.com':     { pattern: 'custom', tpl: 'https://letterboxd.com/search/{title}/' },
     'rottentomatoes.com': { pattern: 'custom', tpl: 'https://www.rottentomatoes.com/search?search={title}' },
-    'justwatch.com':      { pattern: 'custom', tpl: 'https://www.justwatch.com/sa/%D8%A8%D8%AD%D8%AB?q={title}' }
+    'justwatch.com':      { pattern: 'custom', tpl: 'https://www.justwatch.com/sa/search?q={title}' },
+    'imdb.com':           { pattern: 'custom', tpl: 'https://www.imdb.com/find/?q={title}&s=tt' },
+    'google.com':         { pattern: 'custom', tpl: 'https://www.google.com/search?q={title}' },
+    'bing.com':           { pattern: 'custom', tpl: 'https://www.bing.com/search?q={title}' },
+    'yandex.com':         { pattern: 'custom', tpl: 'https://yandex.com/search/?text={title}' },
+    'duckduckgo.com':     { pattern: 'custom', tpl: 'https://duckduckgo.com/?q={title}' }
   };
 
   function knownFor(host) {
@@ -128,6 +137,33 @@
     return 'embed';
   }
 
+  /**
+   * يتعلّم القالب من مثال بدل ما يخمّن:
+   * تلصق رابط بحث حقيقي من موقعك — https://site.com/?s=inception —
+   * ونستبدل قيمة البحث بـ{title} فيصير القالب مضبوطًا مئة بالمئة.
+   * هذا الحل الوحيد الأكيد: المتصفح ما يقدر يكتشف نمط أي موقع عن بُعد.
+   */
+  function learnTemplate(url) {
+    var u;
+    try { u = new URL(normalize(url)); } catch (e) { return ''; }
+
+    /* ١) قيمة في الاستعلام — الحالة الأشيع (?s= ?q= ?wd= ?phrase=) */
+    var key = '';
+    u.searchParams.forEach(function (v, k) {
+      if (!key && v && v.length >= 2 && !/^\d+$/.test(v)) key = k;
+    });
+    if (key) {
+      u.searchParams.set(key, 'RANHUBTITLE');
+      return u.toString().replace('RANHUBTITLE', '{title}');
+    }
+
+    /* ٢) آخر مقطع في مسار بحث — /search/inception أو /find/inception/ */
+    var m = u.pathname.match(/^(.*\/(?:search|find|s|q|vod|بحث)\/)([^\/]{2,})(\/?)$/i);
+    if (m) return u.origin + m[1] + '{title}' + m[3] + u.search + u.hash;
+
+    return '';
+  }
+
   /* النمط اللي يناسب النطاق */
   function guessPattern(url) {
     var k = knownFor(hostOf(url));
@@ -142,25 +178,30 @@
     /* لو ما فيه بدائل نحتفظ بالنطاق فقط ونبني البحث من النمط */
     var type = TYPES[src.type] ? src.type : guessType(raw);
     var known = knownFor(hostOf(url));
+    /* لصق مثال بحث حقيقي؟ نتعلّم منه القالب ونتجاهل الأنماط المخمَّنة */
+    var learned = type === 'site' ? learnTemplate(raw) : '';
 
     var item = {
       id: 's' + Date.now() + Math.floor(Math.random() * 1000),
       name: String(src.name || '').trim() || nameFromUrl(url) || 'مصدر',
+      /* نحتفظ بالمثال اللي لصقه عشان يشوفه في القائمة */
+      example: learned ? raw : '',
       /* «موقع كامل» وحده يُختزل لنطاقه — غيره يحتفظ بالمسار كما هو،
          وإلا ضاع مسار ملف الفيديو أو القالب */
       url: type === 'site' && !hasTokens(raw) ? originOf(url) : url,
+      learned: !!learned,
       origin: originOf(url),
       key: String(src.key || '').trim(),
       type: type,
-      pattern: src.pattern || (known ? known.pattern : 's'),
-      tpl: known ? known.tpl : '',
+      pattern: learned ? 'custom' : (src.pattern || (known ? known.pattern : 's')),
+      tpl: learned || (known ? known.tpl : ''),
       enabled: true,
       status: null,          /* { ok, detail, at } */
       addedAt: Date.now()
     };
 
-    /* نمط مخصّص كتبه المستخدم بنفسه */
-    if (src.pattern === 'custom' && src.tpl) item.tpl = String(src.tpl).trim();
+    /* نمط مخصّص كتبه المستخدم بنفسه يغلب كل شي */
+    if (src.pattern === 'custom' && src.tpl) { item.tpl = String(src.tpl).trim(); item.learned = false; }
 
     var list = all();
     list.push(item);
@@ -186,11 +227,20 @@
      بناء الرابط لعمل معيّن
      ------------------------------------------------------------ */
 
+  /* المسافات: '+' داخل الاستعلام و%20 داخل المسار — الخلط يكسر بحث بعض المواقع */
+  function encTitle(name, tpl) {
+    var enc = encodeURIComponent(name);
+    var at = String(tpl).indexOf('{title}');
+    var qm = String(tpl).indexOf('?');
+    var inQuery = qm !== -1 && at > qm;
+    return inQuery ? enc.replace(/%20/g, '+') : enc;
+  }
+
   function fill(tpl, item, extra) {
     extra = extra || {};
     var name = item.originalTitle || item.title || '';
     var map = {
-      '{title}':     encodeURIComponent(name),
+      '{title}':     encTitle(name, tpl),
       '{title_raw}': name,
       '{year}':      item.year || '',
       '{imdb}':      item.imdbId || '',
@@ -420,6 +470,7 @@
     hostOf: hostOf,
     originOf: originOf,
     hasTokens: hasTokens,
+    learnTemplate: learnTemplate,
     guessType: guessType,
     guessPattern: guessPattern,
     knownFor: knownFor,

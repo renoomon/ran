@@ -1088,14 +1088,17 @@
 
     /* نطاق معروف؟ نضبط نمطه تلقائيًا ونقول له */
     var known = CS.mySources.knownFor(host);
-    if (known && !$('#src-pattern').dataset.touched) $('#src-pattern').value = 'custom';
+    /* لصق مثال بحث حقيقي؟ نتعلّم القالب منه — أدق من أي تخمين */
+    var learned = CS.mySources.learnTemplate(raw);
+    if ((known || learned) && !$('#src-pattern').dataset.touched) $('#src-pattern').value = 'custom';
 
     var draft = {
       type: $('#src-type').value,
       url: CS.mySources.hasTokens(raw) ? raw : CS.mySources.originOf(raw),
       origin: CS.mySources.originOf(raw),
-      pattern: $('#src-pattern').value,
-      tpl: known ? known.tpl : ($('#src-pattern').value === 'custom' ? $('#src-tpl').value.trim() : ''),
+      pattern: learned ? 'custom' : $('#src-pattern').value,
+      tpl: learned || (known ? known.tpl
+            : ($('#src-pattern').value === 'custom' ? $('#src-tpl').value.trim() : '')),
       key: $('#src-key').value.trim()
     };
 
@@ -1110,10 +1113,12 @@
     out.innerHTML = '🔎 رابط البحث اللي بيتولّد لفيلم Inception — ' +
       '<a href="' + esc0(sample) + '" target="_blank" rel="noopener noreferrer">افتحه وشوفه بنفسك</a>:' +
       '<br><code dir="ltr">' + esc0(sample) + '</code>' +
-      (known
+      (learned
+        ? '<br>🎓 تعلّمت النمط من المثال اللي لصقته — هذا أضمن طريقة.'
+        : known
         ? '<br>🟢 نطاق معروف — ضبطت رابط بحثه الرسمي تلقائيًا.'
-        : '<br>🟡 لو ما طلعت نتائج، بدّل «نمط البحث» من الخيارات المتقدّمة — ' +
-          'المتصفح ما يخلّينا نكتشف نمط أي موقع تلقائيًا.');
+        : '<br>🟡 ما طلعت نتائج؟ افتح موقعك، ابحث فيه عن أي فيلم، وانسخ رابط صفحة ' +
+          'النتائج والصقه هنا — بيتعلّم النمط منه بالضبط. المتصفح ما يخلّينا نكتشفه تلقائيًا.');
   }
 
   function addSource() {
@@ -1136,6 +1141,11 @@
       $('#src-tpl').value  = '';
       $('#src-preview').textContent = '';
       $('#src-pattern').dataset.touched = '';
+      $('#src-type').dataset.touched = '';
+      $('#src-type').value = 'site';
+      $('#src-pattern').value = 's';
+      $('#src-adv').open = false;
+      syncSrcForm();
       renderSources();
       out.className = 'keyrow__out is-ok';
       out.textContent = '🟢 انضاف «' + s.name + '» — أفحصه الحين…';
@@ -1723,11 +1733,19 @@
     /* معاينة حيّة: الاسم والنمط ورابط البحث المتولّد */
     $('#src-url').addEventListener('input', function () {
       var raw = this.value.trim();
-      /* الصق قالبًا فيه بدائل؟ ننقلك تلقائيًا للنوع المناسب */
-      if ($('#src-type').value === 'site' &&
-          (CS.mySources.hasTokens(raw) || CS.mySources.isMediaUrl(raw))) {
-        $('#src-type').value = CS.mySources.guessType(raw);
-        $('#src-adv').open = true;
+
+      /* النوع يتبع الرابط:
+         · امتداد وسائط أو نطاق مجرّد = إشارة قاطعة، تغلب أي اختيار سابق
+         · قالب فيه بدائل = ملتبس (مشغّل ولا رابط ولا API؟) فاختيار المستخدم يبقى */
+      var guess = raw ? CS.mySources.guessType(raw) : 'site';
+      var certain = !raw || CS.mySources.isMediaUrl(raw) || !CS.mySources.hasTokens(raw);
+
+      if (certain || !$('#src-type').dataset.touched) {
+        if (certain) $('#src-type').dataset.touched = '';
+        if ($('#src-type').value !== guess) {
+          $('#src-type').value = guess;
+          if (guess !== 'site') $('#src-adv').open = true;
+        }
       }
       syncSrcForm();
       previewSource();
@@ -1739,7 +1757,11 @@
       previewSource();
     });
     $('#src-tpl').addEventListener('input', previewSource);
-    $('#src-type').addEventListener('change', function () { syncSrcForm(); previewSource(); });
+    $('#src-type').addEventListener('change', function () {
+      this.dataset.touched = '1';
+      syncSrcForm();
+      previewSource();
+    });
 
     /* مصادر البيانات */
     $('#ds-preset').addEventListener('change', onPresetPick);
