@@ -326,6 +326,12 @@
       if ((item.titleSim || 0) >= .85) item.score += 40;
     });
 
+    /* نسبة تطابق مفهومة للمستخدم — مشتقة من الدرجة نفسها */
+    var top = order.reduce(function (m, x) { return Math.max(m, x.score || 0); }, 1);
+    order.forEach(function (item) {
+      item.matchPct = Math.max(30, Math.min(99, Math.round((item.score / top) * 99)));
+    });
+
     order.sort(function (a, b) { return b.score - a.score; });
     return order;
   }
@@ -401,6 +407,17 @@
         return p.catch(function () { return []; });
       }));
     }).then(function (sets) {
+      /* استعلام وصفي: نتيجة «مطابقة بالاسم» ما تتصدّر على مطابقة القصة،
+         لأن المستخدم كتب قصة لا عنوانًا */
+      if (intent === 'plot') {
+        sets.forEach(function (list) {
+          (list || []).forEach(function (it) {
+            if (it.why === 'title' && (it.titleSim || 0) < .7) it.engineScore -= 45;
+            if (it.why === 'plot') it.engineScore += 30;
+          });
+        });
+      }
+
       var items = merge(sets);
       meta.core = items.length;
 

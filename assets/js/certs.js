@@ -215,6 +215,9 @@
   var FILTERS = {
     all:      { label: 'كل التصنيفات', min: 0, max: 4 },
     /* ثلاثة أقسام للكبار فقط — كلها تستبعد أي عمل غير مصنّف صراحةً */
+    /* وضع «للبالغين فقط» على مستوى الموقع كله: R / TV-MA / 15 / 18 / NC-17.
+       حصره في المستوى ٤ وحده يفرّغ الكتالوج — NC-17 كله بضع عشرات الأفلام. */
+    adults:   { label: 'للبالغين فقط (+17 فما فوق)', min: 3, max: 4, mature: true, needsAdult: true },
     mature:   { label: '+18 (تصنيف رسمي)', min: 4, max: 4, mature: true, needsAdult: true },
     erotic:   { label: 'إيروتيك', min: 3, max: 4, mature: true, needsAdult: true, keywords: true },
     explicit: { label: 'إباحي صريح', min: 5, max: 5, mature: true, needsAdult: true }
@@ -266,6 +269,8 @@
   var DISCOVER_CERT = {
     /* +18 الرسمي: NC-17 فما فوق حسب لوح أمريكا */
     mature:   { 'certification.gte': 'NC-17' },
+    /* وضع الموقع للبالغين: R فما فوق حسب لوح أمريكا */
+    adults:   { 'certification.gte': 'R' },
     /* الإيروتيك غالبًا R أو NC-17، والاعتماد الأكبر على الكلمات المفتاحية */
     erotic:   { 'certification.gte': 'R' }
     /* الإباحي الصريح: ما نضع تصنيفًا — علم adult محور منفصل تمامًا عن NC-17 */

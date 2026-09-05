@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://image.tmdb.org">
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/style.css?v=3.0.0">
+<link rel="stylesheet" href="assets/css/style.css?v=3.1.0">
 </head>
 <body>
 
@@ -56,6 +56,9 @@
         <span class="badge" id="fav-count" hidden>0</span>
       </button>
       <button class="iconbtn" id="btn-lang" title="لغة المحتوى" aria-label="لغة المحتوى"><span id="lang-label">ع</span></button>
+      <button class="iconbtn" id="btn-sources" title="إعدادات المصادر" aria-label="إعدادات المصادر">
+        <span aria-hidden="true">🎬</span>
+      </button>
       <button class="iconbtn" id="btn-settings" title="الإعدادات" aria-label="الإعدادات">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v2M12 19.4v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2.6 12h2M19.4 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>
       </button>
@@ -245,14 +248,19 @@
 
       <label class="switch">
         <input type="checkbox" id="set-autotr">
-        <span><b>ترجمة تلقائية للقصة</b><i>يترجم أي ملخص أو قصة إنجليزية للعربي بدون ما تضغط شي</i></span>
+        <span><b>ترجمة تلقائية للقصة</b><i>يترجم أي ملخص أو قصة غير عربية للعربي بدون ما تضغط شي</i></span>
+      </label>
+
+      <label class="switch">
+        <input type="checkbox" id="set-adultonly">
+        <span><b>🔞 وضع الكبار فقط</b><i>كل الأقسام — أفلام ومسلسلات وبرامج ووثائقي — تعرض المصنّف +17 فما فوق فقط (R / TV-MA / 18 / NC-17)</i></span>
       </label>
 
       <h3 class="modal__sec">المصادر</h3>
 
       <label class="field">
         <span class="field__label">مفتاح TMDB خاص فيك <em>(اختياري)</em></span>
-        <input type="password" id="api-key" placeholder="الموقع فيه مفتاح مشترك جاهز — اتركه فاضي" autocomplete="off" spellcheck="false">
+        <span class="keyrow"><input type="password" id="api-key" placeholder="الموقع فيه مفتاح مشترك جاهز — اتركه فاضي" autocomplete="off" spellcheck="false"><button type="button" class="keyrow__test" data-test-key="api-key">تحقق</button></span><span class="keyrow__out" id="out-api-key"></span>
         <small class="field__hint">
           مفتاح مجاني من <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">themoviedb.org</a> —
           يقبل <b>v3</b> أو توكن <b>v4</b>. يُحفظ في متصفحك فقط.
@@ -261,7 +269,7 @@
 
       <label class="field">
         <span class="field__label">مفتاح OMDb <em>(مجاني)</em></span>
-        <input type="password" id="omdb-key" placeholder="تقييمات IMDb وروتن توميتوز" autocomplete="off" spellcheck="false">
+        <span class="keyrow"><input type="password" id="omdb-key" placeholder="تقييمات IMDb وروتن توميتوز" autocomplete="off" spellcheck="false"><button type="button" class="keyrow__test" data-test-key="omdb-key">تحقق</button></span><span class="keyrow__out" id="out-omdb-key"></span>
         <small class="field__hint">
           <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener">omdbapi.com</a> — ١٠٠٠ طلب باليوم.
           يضيف تقييم IMDb ونسبة Rotten Tomatoes وميتاكريتك والجوائز وشبّاك التذاكر.
@@ -270,7 +278,7 @@
 
       <label class="field">
         <span class="field__label">مفتاح Fanart.tv <em>(مجاني)</em></span>
-        <input type="password" id="fanart-key" placeholder="بوسترات وشعارات بدقة عالية" autocomplete="off" spellcheck="false">
+        <span class="keyrow"><input type="password" id="fanart-key" placeholder="بوسترات وشعارات بدقة عالية" autocomplete="off" spellcheck="false"><button type="button" class="keyrow__test" data-test-key="fanart-key">تحقق</button></span><span class="keyrow__out" id="out-fanart-key"></span>
         <small class="field__hint">
           <a href="https://fanart.tv/get-an-api-key/" target="_blank" rel="noopener">fanart.tv</a> —
           يضيف شعار العمل وخلفيات بدقة أعلى من TMDB.
@@ -279,7 +287,7 @@
 
       <label class="field">
         <span class="field__label">Trakt Client ID <em>(مجاني)</em></span>
-        <input type="password" id="trakt-key" placeholder="إحصاءات المشاهدة والقوائم" autocomplete="off" spellcheck="false">
+        <span class="keyrow"><input type="password" id="trakt-key" placeholder="إحصاءات المشاهدة والقوائم" autocomplete="off" spellcheck="false"><button type="button" class="keyrow__test" data-test-key="trakt-key">تحقق</button></span><span class="keyrow__out" id="out-trakt-key"></span>
         <small class="field__hint">
           <a href="https://trakt.tv/oauth/applications" target="_blank" rel="noopener">trakt.tv</a> —
           يضيف عدد المشاهدات وترتيب الشعبية الأسبوعي.
@@ -288,7 +296,7 @@
 
       <label class="field">
         <span class="field__label">بريدك لرفع حد الترجمة <em>(اختياري)</em></span>
-        <input type="email" id="tr-email" placeholder="name@example.com" autocomplete="off" spellcheck="false">
+        <span class="keyrow"><input type="email" id="tr-email" placeholder="name@example.com" autocomplete="off" spellcheck="false"><button type="button" class="keyrow__test" data-test-key="tr-email">تحقق</button></span><span class="keyrow__out" id="out-tr-email"></span>
         <small class="field__hint">
           الترجمة عبر <a href="https://mymemory.translated.net/" target="_blank" rel="noopener">MyMemory</a>:
           ٥٠٠٠ حرف يوميًا بدون بريد، و٥٠ ألف مع بريد.
@@ -309,18 +317,83 @@
   </div>
 </div>
 
+
+<!-- ==================== إعدادات المصادر ==================== -->
+<div class="modal" id="srcmodal" hidden aria-modal="true" role="dialog" aria-label="إعدادات المصادر">
+  <div class="modal__backdrop" data-close-src></div>
+  <div class="modal__panel">
+    <header class="modal__head">
+      <h2>إعدادات المصادر</h2>
+      <button class="iconbtn" data-close-src aria-label="إغلاق">&times;</button>
+    </header>
+
+    <div class="modal__body">
+      <p class="field__hint">
+        🎬 أضف سيرفرات المشاهدة الرسمية الخاصة بك. كل مصدر له زر تحقق مستقل،
+        والموقع يبني منه رابط المشاهدة لكل عمل تلقائيًا.
+      </p>
+
+      <div class="srclist" id="src-list"></div>
+
+      <h3 class="modal__sec">إضافة مصدر</h3>
+
+      <div class="field-row">
+        <label class="field" style="flex:1 1 160px">
+          <span class="field__label">اسم المصدر</span>
+          <input type="text" id="src-name" placeholder="يُستنتج من الرابط لو تركته فاضي">
+        </label>
+        <label class="field" style="flex:0 1 190px">
+          <span class="field__label">النوع</span>
+          <select id="src-type">
+            <option value="embed">مشغّل داخل الصفحة</option>
+            <option value="link">رابط تبويب جديد</option>
+            <option value="api">API يرجّع رابط</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="field">
+        <span class="field__label">رابط المصدر (قالب)</span>
+        <input type="text" id="src-url" dir="ltr" placeholder="https://your-cdn.com/embed/{imdb}">
+        <small class="field__hint">
+          البدائل المتاحة:
+          <code>{imdb}</code> <code>{tmdb}</code> <code>{title}</code> <code>{title_raw}</code>
+          <code>{year}</code> <code>{type}</code> <code>{season}</code> <code>{episode}</code> <code>{key}</code>
+        </small>
+      </label>
+
+      <label class="field">
+        <span class="field__label">مفتاح API <em>(اختياري)</em></span>
+        <input type="password" id="src-key" placeholder="يُرسل كـ Bearer، أو ضعه في القالب بـ {key}" autocomplete="off">
+      </label>
+
+      <button class="btn" id="btn-src-add">➕ أضف المصدر</button>
+
+      <p class="field__hint">
+        ⚖️ المصادر اللي تضيفها مسؤوليتك أنت — تأكد إن عندك حق البث لكل مصدر تضيفه.
+      </p>
+    </div>
+
+    <footer class="modal__foot">
+      <button class="btn btn--ghost" id="btn-src-testall">🔍 تحقق من الكل</button>
+      <button class="btn" data-close-src>تم</button>
+    </footer>
+  </div>
+</div>
+
 <div class="toast" id="toast" hidden></div>
 
-<script src="assets/js/config.js?v=3.0.0"></script>
-<script src="assets/js/taste.js?v=3.0.0"></script>
-<script src="assets/js/certs.js?v=3.0.0"></script>
-<script src="assets/js/tmdb.js?v=3.0.0"></script>
-<script src="assets/js/wiki.js?v=3.0.0"></script>
-<script src="assets/js/sources.js?v=3.0.0"></script>
-<script src="assets/js/links.js?v=3.0.0"></script>
-<script src="assets/js/feed.js?v=3.0.0"></script>
-<script src="assets/js/search.js?v=3.0.0"></script>
-<script src="assets/js/ui.js?v=3.0.0"></script>
-<script src="assets/js/app.js?v=3.0.0"></script>
+<script src="assets/js/config.js?v=3.1.0"></script>
+<script src="assets/js/taste.js?v=3.1.0"></script>
+<script src="assets/js/certs.js?v=3.1.0"></script>
+<script src="assets/js/tmdb.js?v=3.1.0"></script>
+<script src="assets/js/wiki.js?v=3.1.0"></script>
+<script src="assets/js/sources.js?v=3.1.0"></script>
+<script src="assets/js/mysources.js?v=3.1.0"></script>
+<script src="assets/js/links.js?v=3.1.0"></script>
+<script src="assets/js/feed.js?v=3.1.0"></script>
+<script src="assets/js/search.js?v=3.1.0"></script>
+<script src="assets/js/ui.js?v=3.1.0"></script>
+<script src="assets/js/app.js?v=3.1.0"></script>
 </body>
 </html>

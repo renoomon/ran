@@ -79,7 +79,7 @@
 
   /* وسوم المحتوى تُسحب فقط في أقسام الكبار — فيها الفائدة، وتوفّر طلبات */
   function ensureHeat(list, cap) {
-    if (!CS.certs.matureOnly()) return Promise.resolve();
+    if (!CS.certs.matureOnly() || CS.certs.currentFilter() === 'adults') return Promise.resolve();
     var need = (list || []).slice(0, cap || 40).filter(function (it) {
       return it.source === 'tmdb' && CS.certs.cachedHeat(it) === undefined;
     });
@@ -117,6 +117,30 @@
      الاستكشاف — شبكة واحدة بترقيم لا نهائي
      ============================================================ */
 
+  /* ------------------------------------------------------------
+     وضع «للبالغين فقط» — يشمل الموقع كله لا الأقسام المخصّصة وحدها
+     ------------------------------------------------------------ */
+
+  function adultOnlyOn() { return CS.store.get(CS.KEYS.adultOnly, true) !== false; }
+
+  function setAdultOnly(on) {
+    CS.store.set(CS.KEYS.adultOnly, !!on);
+    /* تفعيله من الإعدادات موافقة صريحة بذاته */
+    if (on) CS.store.set(CS.KEYS.adultOn, true);
+  }
+
+  /* أي فلتر تصنيف يستحقه هذا القسم الآن */
+  function certFor(tab) {
+    var conf = TABS[tab] || TABS.all;
+    if (conf.cert !== 'all') return conf.cert;
+    return adultOnlyOn() ? 'adults' : 'all';
+  }
+
+  function titleFor(tab) {
+    var conf = TABS[tab] || TABS.all;
+    return conf.cert === 'all' && adultOnlyOn() ? conf.title + ' 🔞' : conf.title;
+  }
+
   var TABS = {
     all:      { title: '✨ كل الأعمال',   cert: 'all' },
     movie:    { title: '🎬 أفلام',        cert: 'all' },
@@ -137,23 +161,32 @@
 
   function startFeed(tab) {
     var conf = TABS[tab] || TABS.all;
+    var cert = certFor(tab);
 
-    /* أقسام الكبار تحتاج موافقة صريحة مرة وحدة */
-    if (conf.cert !== 'all' && !CS.store.get(CS.KEYS.adultOn, false)) {
+    /* كل ما هو للبالغين يحتاج موافقة صريحة محفوظة مرة وحدة */
+    if (cert !== 'all' && !CS.store.get(CS.KEYS.adultOn, false)) {
       var ok = window.confirm(
-        'قسم للبالغين فقط (+18)\n\n' +
-        'هذا القسم يعرض محتوى مصنّف +18 فقط، وما يعرض شي عام.\n' +
-        'تأكد إنك بالغ وإن استخدامه مسؤوليتك. تبي تفتحه؟'
+        'محتوى للبالغين فقط\n\n' +
+        'هذا الموقع مضبوط على عرض أعمال البالغين فقط (+17 فما فوق).\n' +
+        'تأكد إنك بالغ وإن استخدامه مسؤوليتك. تبي تكمّل؟'
       );
-      if (!ok) { setTab('all'); return; }
-      CS.store.set(CS.KEYS.adultOn, true);
+      if (!ok) {
+        /* الرفض يطفي الوضع كله ويرجّعنا لخلاصة عامة — بلا نوافذ متكرّرة */
+        setAdultOnly(false);
+        CS.store.set(CS.KEYS.adultOnly, false);
+        if (conf.cert !== 'all') { tab = 'all'; conf = TABS.all; setTab('all'); }
+        cert = 'all';
+      } else {
+        CS.store.set(CS.KEYS.adultOn, true);
+      }
     }
 
-    CS.store.set(CS.KEYS.certTier, conf.cert);
+    CS.store.set(CS.KEYS.certTier, cert);
     CS.store.set(CS.KEYS.tab, tab);
+    autoRounds = 0;
 
-    $('#feed-title').textContent = conf.title;
-    $('#age-warn').hidden = conf.cert === 'all';
+    $('#feed-title').textContent = titleFor(tab);
+    $('#age-warn').hidden = cert === 'all';
 
     CS.feed.reset({
       tab: tab,
@@ -176,6 +209,8 @@
     });
   }
 
+  var autoRounds = 0;
+
   function loadFeed(first) {
     if (feedBusy) return;
     feedBusy = true;
@@ -183,27 +218,19 @@
     if (btn) { btn.disabled = true; btn.textContent = '⏳ يحمّل…'; }
 
     CS.feed.loadMore().then(function (res) {
-      feedBusy = false;
-      if (CS.state.view !== 'home') return;
+      if (CS.state.view !== 'home') { feedBusy = false; return; }
 
       var items = res.items;
       remember(items);
 
-      if (!items.length) {
-        $('#feed-grid').innerHTML = '';
-        $('#feed-empty').hidden = false;
-        $('#feed-empty').innerHTML = emptyFeedHtml();
-        $('#feed-more').hidden = true;
-        return;
-      }
-
-      $('#feed-empty').hidden = true;
-      $('#feed-grid').innerHTML = CS.ui.cards(items);
-      $('#feed-count').textContent = items.length + ' عمل' + (res.exhausted ? ' — خلصت المادة' : '');
-      $('#feed-more').hidden = res.exhausted;
-      if (btn) { btn.disabled = false; btn.textContent = 'اعرض المزيد'; }
-      hydrate($('#feed-grid'), items);
-      if (first) window.scrollTo({ top: 0, behavior: 'smooth' });
+      /* في وضع البالغين نجيب التصنيفات قبل الرسم، لأن TMDB ما يفلتر
+         المسلسلات بالتصنيف أصلًا — الفلترة لازم تصير عندنا */
+      var mature = CS.certs.matureOnly();
+      return ensureCerts(items, mature ? 400 : 60).then(function () {
+        feedBusy = false;
+        if (CS.state.view !== 'home') return;
+        paintFeed(items, res, first, btn);
+      });
     }).catch(function (err) {
       feedBusy = false;
       if (btn) { btn.disabled = false; btn.textContent = 'اعرض المزيد'; }
@@ -220,6 +247,41 @@
     });
   }
 
+  function paintFeed(items, res, first, btn) {
+    var shown = CS.certs.matureOnly()
+      ? items.filter(function (it) { return CS.certs.passes(it) === true; })
+      : items;
+
+    /* الفلترة تاكل من الحصيلة — نكمّل تحميلًا تلقائيًا بدل ما نطلع صفحة شبه فاضية */
+    if (shown.length < 24 && !res.exhausted && autoRounds < 8) {
+      autoRounds++;
+      if (shown.length) {
+        $('#feed-empty').hidden = true;
+        $('#feed-grid').innerHTML = CS.ui.cards(shown);
+        hydrate($('#feed-grid'), shown);
+      }
+      loadFeed(first);
+      return;
+    }
+
+    if (!shown.length) {
+      $('#feed-grid').innerHTML = '';
+      $('#feed-empty').hidden = false;
+      $('#feed-empty').innerHTML = emptyFeedHtml();
+      $('#feed-more').hidden = res.exhausted;
+      if (btn) { btn.disabled = false; btn.textContent = 'اعرض المزيد'; }
+      return;
+    }
+
+    $('#feed-empty').hidden = true;
+    $('#feed-grid').innerHTML = CS.ui.cards(shown);
+    $('#feed-count').textContent = shown.length + ' عمل' + (res.exhausted ? ' — خلصت المادة' : '');
+    $('#feed-more').hidden = res.exhausted;
+    if (btn) { btn.disabled = false; btn.textContent = 'اعرض المزيد'; }
+    hydrate($('#feed-grid'), shown);
+    if (first) window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   function emptyFeedHtml() {
     var tab = currentTab();
     if (tab === 'explicit') {
@@ -227,6 +289,12 @@
         '<p>TMDB ما يوفّر تصفّحًا لهذا المحتوى — ما فيه أي معامل يطلب «الإباحي فقط»، ' +
         'وأغلب هذي الأعمال بلا بوستر ولا ملخّص أصلًا.</p>' +
         '<p style="margin-top:.8rem">الطريقة الوحيدة اللي تشتغل: <b>ابحث باسم صريح</b> من الخانة فوق.</p>';
+    }
+    if (CS.certs.currentFilter() === 'adults') {
+      return '<b>🔞 وضع البالغين فقط شغّال</b>' +
+        '<p>ما وصل شي مصنّف +17 فما فوق بهذي الفلاتر. رجّع «اللغة الأصلية» لـ«كل اللغات» ' +
+        'و«أقل تقييم» لـ«أي تقييم»، أو أطفِ الوضع من ⚙️ الإعدادات.</p>' +
+        '<div style="margin-top:1.2rem"><button class="btn" data-diagnose>🔍 افحص الاتصال</button></div>';
     }
     return '<b>🟡 ما فيه شي في هذا القسم</b>' +
       '<p>جرّب توسّع الفلاتر — رجّع «اللغة الأصلية» لـ«كل اللغات» و«أقل تقييم» لـ«أي تقييم».</p>' +
@@ -278,6 +346,9 @@
   function buildMetaText(count) {
     var m = CS.state.meta || {};
     var bits = [count + ' نتيجة'];
+    /* نوضّح للمستخدم بأي طريقة بحثنا — بالوصف ولا بالاسم */
+    if (m.intent === 'plot')  bits.push('🔎 بحثت بالقصة والوصف');
+    if (m.intent === 'mixed') bits.push('🔎 بحثت بالاسم والقصة معًا');
     if (m.translated) bits.push('جرّبت كمان بالإنجليزي: ' + m.translated);
     if (m.relatedOf) bits.push('+ أعمال قريبة من «' + m.relatedOf + '»');
     if (m.tmdbError) bits.push('🔴 TMDB ما رد: ' + m.tmdbError);
@@ -338,7 +409,10 @@
     CS.wiki.toEnglish(q).then(function (en) {
       btn.disabled = false;
       btn.textContent = was;
-      if (!en || en === q) { CS.ui.toast('🟡 ما قدرت أترجم — جرّب بعدين'); return; }
+      if (!en || en === q) {
+        CS.ui.toast('🔴 خدمة الترجمة ما ردّت — غالبًا انتهت الحصة اليومية. حط بريدك في الإعدادات.');
+        return;
+      }
       CS.ui.toast('🔤 ' + en);
       doSearch(en);
     });
@@ -428,24 +502,24 @@
     var panel = $('#detail-panel');
     panel.innerHTML = CS.ui.detailSkeleton();
     window.scrollTo(0, 0);
+    watchPick = null;
     related = { items: [], page: 0, exhausted: false, loading: false };
 
     CS.tmdb.details(type, id).then(function (d) {
       if (token !== detailToken) return;
 
+      /* الترجمة التلقائية مستقلة عن «لغة المحتوى»:
+         أي نص مو عربي يُترجم ما دام الخيار مفعّلًا */
       var extra = {};
       var arabic = d.overview && CS.util.isArabic(d.overview) ? d.overview : d.arOverview;
 
-      if (CS.state.lang !== 'ar') {
-        extra.summary = d.overview || d.enOverview || '';
-        extra.summarySource = 'الملخص من TMDB';
-      } else if (arabic) {
+      if (arabic) {
         extra.summary = arabic;
         extra.summarySource = 'الملخص من TMDB (عربي)';
       } else {
         extra.summary = d.enOverview || d.overview || '';
         extra.summarySource = 'الملخص من TMDB (إنجليزي)';
-        if (autoTranslateOn() && extra.summary) extra.translating = true;
+        if (autoTranslateOn() && extra.summary && !CS.util.isArabic(extra.summary)) extra.translating = true;
       }
 
       panel.innerHTML = CS.ui.detail(d, extra);
@@ -453,12 +527,14 @@
       window.scrollTo(0, 0);
       detailCtx = { d: d, extra: extra, token: token };
       CS.taste.enrich(d);
+      renderWatch();
 
-      if (CS.state.lang === 'ar' && !arabic && extra.summary && autoTranslateOn()) {
+      if (extra.translating) {
         CS.wiki.toArabic(extra.summary, 1200).then(function (ar) {
           if (token !== detailToken) return;
           extra.translating = false;
           if (ar) { extra.summary = ar; extra.summarySource = 'الملخص من TMDB (ترجمة آلية)'; }
+          else extra.plotError = 'ما قدرت أترجم الملخص — غالبًا انتهت حصة الترجمة المجانية اليوم. حط بريدك في الإعدادات عشان ترتفع لـ٥٠ ألف حرف.';
           repaintStory();
         });
       }
@@ -569,7 +645,7 @@
         extra.plotLang = w.wikiLang;
 
         /* ترجمة تلقائية للقصة الطويلة لو الإعداد مفعّل */
-        if (CS.state.lang === 'ar' && autoTranslateOn() && !CS.util.isArabic(plot)) {
+        if (autoTranslateOn() && !CS.util.isArabic(plot)) {
           extra.translating = true;
           repaintStory();
           CS.wiki.toArabic(plot, 3000).then(function (ar) {
@@ -677,6 +753,7 @@
     $('#set-lang').value   = CS.state.lang;
     $('#set-region').value = CS.state.region;
     $('#set-autotr').checked = autoTranslateOn();
+    $('#set-adultonly').checked = adultOnlyOn();
 
     var st = $('#key-state');
     st.className = 'keystate';
@@ -712,6 +789,7 @@
     CS.state.lang = CS.store.set(CS.KEYS.lang, $('#set-lang').value);
     CS.state.region = CS.store.set(CS.KEYS.region, $('#set-region').value);
     CS.store.set(CS.KEYS.autoTr, $('#set-autotr').checked);
+    setAdultOnly($('#set-adultonly').checked);
     $('#lang-label').textContent = CS.state.lang === 'ar' ? 'ع' : 'EN';
 
     [['#omdb-key', CS.KEYS.omdbKey], ['#fanart-key', CS.KEYS.fanartKey],
@@ -800,6 +878,257 @@
     if (/ما وصلت/.test(d)) return 'الحل: جرّب شبكة ثانية أو بيانات الجوال — بعض الشبكات تحجب api.themoviedb.org.';
     return 'جرّب مرة ثانية بعد شوي، وإذا تكرر أرسل لي نص الخطأ.';
   }
+
+
+  /* ============================================================
+     زر التحقق لكل صف مفتاح — كل مفتاح يُفحص بطلبه الحقيقي
+     ============================================================ */
+
+  var KEY_TESTS = {
+
+    'api-key': function (v) {
+      return CS.tmdb.testKey(v || CS.config.sharedKey).then(function () {
+        return { ok: true, detail: v ? 'مفتاحك الخاص شغّال' : 'المفتاح المشترك المدمج شغّال' };
+      }).catch(function (e) {
+        return { ok: false, detail: CS.tmdb.explain(e) };
+      });
+    },
+
+    'omdb-key': function (v) {
+      if (!v) return Promise.resolve({ ok: null, detail: 'فاضي — الموقع يشتغل بدونه، بس بدون تقييمات IMDb وروتن توميتوز' });
+      return fetch('https://www.omdbapi.com/?apikey=' + encodeURIComponent(v) + '&i=tt1375666')
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j && j.Response === 'True') return { ok: true, detail: 'شغّال — رجّع «' + (j.Title || '') + '»' };
+          return { ok: false, detail: (j && j.Error) || 'المفتاح مرفوض' };
+        })
+        .catch(netFail);
+    },
+
+    'fanart-key': function (v) {
+      if (!v) return Promise.resolve({ ok: null, detail: 'فاضي — البوسترات بتجي من TMDB عادي' });
+      return fetch('https://webservice.fanart.tv/v3/movies/27205?api_key=' + encodeURIComponent(v))
+        .then(function (r) {
+          if (r.status === 401 || r.status === 403) return { ok: false, detail: 'المفتاح مرفوض (' + r.status + ')' };
+          if (!r.ok) return { ok: false, detail: 'الخادم رد بخطأ ' + r.status };
+          return r.json().then(function (j) {
+            return { ok: true, detail: 'شغّال — رجّع ' + (Object.keys(j || {}).length) + ' حقلًا' };
+          });
+        })
+        .catch(netFail);
+    },
+
+    'trakt-key': function (v) {
+      if (!v) return Promise.resolve({ ok: null, detail: 'فاضي — روابط Trakt بتشتغل بالبحث بدون مفتاح' });
+      return fetch('https://api.trakt.tv/movies/inception', {
+        headers: { 'trakt-api-version': '2', 'trakt-api-key': v, 'content-type': 'application/json' }
+      }).then(function (r) {
+        if (r.status === 401 || r.status === 403) return { ok: false, detail: 'المفتاح مرفوض (' + r.status + ')' };
+        if (!r.ok) return { ok: false, detail: 'الخادم رد بخطأ ' + r.status };
+        return r.json().then(function (j) {
+          return { ok: true, detail: 'شغّال — رجّع «' + ((j && j.title) || '') + '»' };
+        });
+      }).catch(netFail);
+    },
+
+    'tr-email': function (v) {
+      if (!v) return Promise.resolve({ ok: null, detail: 'فاضي — الترجمة شغّالة بحد ٥ آلاف حرف يوميًا' });
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return Promise.resolve({ ok: false, detail: 'صيغة البريد غير صحيحة' });
+      return fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent('a quiet night') +
+                   '&langpair=en|ar&de=' + encodeURIComponent(v))
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          var txt = j && j.responseData && j.responseData.translatedText;
+          if (j && +j.responseStatus === 200 && txt) return { ok: true, detail: 'شغّال — ترجم تجربة إلى «' + txt + '»' };
+          return { ok: false, detail: (j && j.responseDetails) || 'خدمة الترجمة رفضت الطلب' };
+        })
+        .catch(netFail);
+    }
+  };
+
+  function netFail(err) {
+    var m = String((err && err.message) || err);
+    return {
+      ok: false,
+      detail: /Failed to fetch|NetworkError|Load failed/i.test(m)
+        ? 'ما وصلت للخدمة — إما الشبكة تحجبها أو الخدمة واقفة'
+        : m
+    };
+  }
+
+  function verifyKeyRow(btn) {
+    var id  = btn.dataset.testKey;
+    var inp = document.getElementById(id);
+    var out = document.getElementById('out-' + id);
+    var fn  = KEY_TESTS[id];
+    if (!inp || !out || !fn) return;
+
+    var label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳';
+    out.className = 'keyrow__out is-wait';
+    out.textContent = 'أفحص…';
+
+    fn(inp.value.trim()).then(function (r) {
+      btn.disabled = false;
+      btn.textContent = label;
+      out.className = 'keyrow__out ' + (r.ok === true ? 'is-ok' : r.ok === false ? 'is-bad' : 'is-idle');
+      out.textContent = (r.ok === true ? '🟢 ' : r.ok === false ? '🔴 ' : '⚪ ') + r.detail;
+    }).catch(function (e) {
+      btn.disabled = false;
+      btn.textContent = label;
+      out.className = 'keyrow__out is-bad';
+      out.textContent = '🔴 ' + ((e && e.message) || e);
+    });
+  }
+
+  /* ============================================================
+     إعدادات المصادر — سيرفرات المشاهدة الخاصة بالمشغّل
+     ============================================================ */
+
+  function openSources() {
+    renderSources();
+    $('#srcmodal').hidden = false;
+    document.body.classList.add('is-locked');
+    setTimeout(function () { $('#src-url').focus(); }, 60);
+  }
+
+  function closeSources() {
+    $('#srcmodal').hidden = true;
+    if ($('#settings').hidden) document.body.classList.remove('is-locked');
+  }
+
+  function statusLine(s) {
+    if (!s.status) return '<i class="srcitem__st">⚪ ما تحقّقت منه بعد</i>';
+    return '<i class="srcitem__st ' + (s.status.ok ? 'is-ok' : 'is-bad') + '">' +
+      (s.status.ok ? '🟢 ' : '🔴 ') + esc0(s.status.detail) + '</i>';
+  }
+
+  function renderSources() {
+    var list = CS.mySources.all();
+    var box = $('#src-list');
+
+    if (!list.length) {
+      box.innerHTML = '<div class="empty" style="padding:1.4rem">' +
+        '<b>⚪ ما فيه مصادر</b><p>أضف أول سيرفر لك من الخانات تحت.</p></div>';
+      return;
+    }
+
+    box.innerHTML = list.map(function (s) {
+      return '<div class="srcitem' + (s.enabled ? '' : ' is-off') + '" data-src-row="' + esc0(s.id) + '">' +
+        '<div class="srcitem__top">' +
+          '<b class="srcitem__name">' + esc0(s.name) + '</b>' +
+          '<span class="srcitem__type">' + esc0(CS.mySources.TYPES[s.type] || s.type) + '</span>' +
+        '</div>' +
+        '<code class="srcitem__url" dir="ltr">' + esc0(s.url) + '</code>' +
+        statusLine(s) +
+        '<div class="srcitem__acts">' +
+          '<button class="btn btn--sm" data-src-test="' + esc0(s.id) + '">تحقق</button>' +
+          '<button class="btn btn--sm btn--ghost" data-src-toggle="' + esc0(s.id) + '">' +
+            (s.enabled ? 'إيقاف' : 'تشغيل') + '</button>' +
+          '<button class="btn btn--sm btn--ghost" data-src-del="' + esc0(s.id) + '">حذف</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function addSource() {
+    var url = $('#src-url').value.trim();
+    if (!url) { CS.ui.toast('🔴 اكتب رابط المصدر أولًا'); $('#src-url').focus(); return; }
+
+    try {
+      var s = CS.mySources.add({
+        name: $('#src-name').value.trim(),
+        url:  url,
+        key:  $('#src-key').value.trim(),
+        type: $('#src-type').value
+      });
+      $('#src-name').value = '';
+      $('#src-url').value  = '';
+      $('#src-key').value  = '';
+      renderSources();
+      CS.ui.toast('🟢 انضاف «' + s.name + '»');
+      testSource(s.id);
+    } catch (e) {
+      CS.ui.toast(String(e && e.message) === 'BAD_URL'
+        ? '🔴 الرابط لازم يبدأ بـ https://'
+        : '🔴 ما قدرت أضيفه');
+    }
+  }
+
+  function testSource(id) {
+    var s = CS.mySources.all().filter(function (x) { return x.id === id; })[0];
+    if (!s) return Promise.resolve();
+
+    var row = $('[data-src-row="' + id + '"]');
+    var st  = row && row.querySelector('.srcitem__st');
+    if (st) { st.className = 'srcitem__st is-wait'; st.textContent = '⏳ أفحص…'; }
+
+    return CS.mySources.test(s).then(function () {
+      renderSources();
+      if (detailCtx) renderWatch();
+    });
+  }
+
+  function testAllSources() {
+    var list = CS.mySources.all();
+    if (!list.length) { CS.ui.toast('⚪ ما فيه مصادر أفحصها'); return; }
+
+    var btn = $('#btn-src-testall');
+    btn.disabled = true;
+    var label = btn.textContent;
+    btn.textContent = '⏳ يفحص…';
+
+    CS.util.pool(list, 2, function (s) { return CS.mySources.test(s); }).then(function () {
+      btn.disabled = false;
+      btn.textContent = label;
+      renderSources();
+      var bad = CS.mySources.all().filter(function (s) { return s.status && !s.status.ok; }).length;
+      CS.ui.toast(bad ? '🟡 ' + bad + ' من المصادر ما نجحت' : '🟢 كل المصادر شغّالة');
+      if (detailCtx) renderWatch();
+    });
+  }
+
+  /* ============================================================
+     قسم المشاهدة داخل صفحة العمل
+     ============================================================ */
+
+  var watchPick = null;
+  var watchResolved = {};
+
+  function activeSources() {
+    return CS.mySources.all().filter(function (s) { return s.enabled; });
+  }
+
+  function renderWatch() {
+    var sec = $('#dt-watch');
+    if (!sec || !detailCtx) return;
+
+    var list = activeSources();
+    var active = list.filter(function (s) { return s.id === watchPick; })[0] || list[0];
+    var item = detailCtx.d;
+    var rkey = active ? active.id + '|' + item.type + '|' + item.id : '';
+
+    sec.innerHTML = CS.ui.watchSection(item, list, active ? active.id : null, watchResolved[rkey] || '');
+
+    /* مصدر من نوع API: نطلب منه رابط التشغيل ثم نعيد الرسم */
+    if (active && active.type === 'api' && !watchResolved[rkey] &&
+        !CS.mySources.missingFor(active, item).length) {
+      var token = detailCtx.token;
+      CS.mySources.resolveApi(active, item).then(function (url) {
+        if (token !== detailToken) return;
+        watchResolved[rkey] = url || '';
+        if (url) renderWatch();
+        else {
+          var s2 = $('#dt-watch');
+          if (s2) s2.innerHTML = CS.ui.watchSection(item, list, active.id, '') .replace(
+            'أطلب رابط التشغيل من ' + active.name + '…',
+            '🔴 ' + active.name + ' ما رجّع رابط تشغيل لهذا العمل.');
+        }
+      });
+    }
+  }
+
 
   /* ============================================================
      الاقتراحات الفورية
@@ -1055,6 +1384,36 @@
       if (e.target.closest('[data-tab-all]')) { setTab('all'); startFeed('all'); return; }
       if (e.target.closest('[data-back]')) { goBack(); return; }
       if (e.target.closest('[data-close-settings]')) { closeSettings(); return; }
+      if (e.target.closest('[data-close-src]')) { closeSources(); return; }
+
+      var keyBtn = e.target.closest('[data-test-key]');
+      if (keyBtn) { verifyKeyRow(keyBtn); return; }
+
+      var st = e.target.closest('[data-src-test]');
+      if (st) { testSource(st.dataset.srcTest); return; }
+
+      var sg = e.target.closest('[data-src-toggle]');
+      if (sg) {
+        var cur = CS.mySources.all().filter(function (x) { return x.id === sg.dataset.srcToggle; })[0];
+        if (cur) CS.mySources.update(cur.id, { enabled: !cur.enabled });
+        renderSources();
+        if (detailCtx) renderWatch();
+        return;
+      }
+
+      var sd = e.target.closest('[data-src-del]');
+      if (sd) {
+        var gone = CS.mySources.all().filter(function (x) { return x.id === sd.dataset.srcDel; })[0];
+        if (gone && window.confirm('أحذف «' + gone.name + '»؟')) {
+          CS.mySources.remove(gone.id);
+          renderSources();
+          if (detailCtx) renderWatch();
+        }
+        return;
+      }
+
+      var wp = e.target.closest('[data-watch-src]');
+      if (wp) { watchPick = wp.dataset.watchSrc; renderWatch(); return; }
       if (e.target.closest('[data-route-home]')) { e.preventDefault(); location.hash = '#/'; return; }
 
       if (!e.target.closest('#search-form')) hideSuggest();
@@ -1063,6 +1422,15 @@
     /* --- أزرار الهيدر --- */
     $('#btn-fav').addEventListener('click', function () { goTo('#/liked'); });
     $('#btn-settings').addEventListener('click', openSettings);
+    $('#btn-sources').addEventListener('click', openSources);
+    $('#btn-src-add').addEventListener('click', addSource);
+    $('#btn-src-testall').addEventListener('click', testAllSources);
+
+    /* الاسم يُستنتج من الرابط لحظة الكتابة ما دامت خانة الاسم فاضية */
+    $('#src-url').addEventListener('input', function () {
+      var guess = CS.mySources.nameFromUrl(this.value.trim());
+      $('#src-name').placeholder = guess || 'يُستنتج من الرابط لو تركته فاضي';
+    });
     $('#notice-open-settings').addEventListener('click', function () {
       openSettings();
       if ($('#key-notice').dataset.tmdbBroken) testConnection();
@@ -1097,8 +1465,10 @@
 
     /* --- الاختصارات --- */
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Tab' && !$('#settings').hidden) {
-        var panel = $('.modal__panel');
+      var openModal = !$('#srcmodal').hidden ? '#srcmodal' : !$('#settings').hidden ? '#settings' : '';
+
+      if (e.key === 'Tab' && openModal) {
+        var panel = $('.modal__panel', $(openModal));
         var f = $$('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled])', panel)
           .filter(function (el) { return el.offsetParent !== null; });
         if (!f.length) return;
@@ -1109,6 +1479,7 @@
       }
 
       if (e.key === 'Escape') {
+        if (!$('#srcmodal').hidden) return closeSources();
         if (!$('#settings').hidden) return closeSettings();
         if (CS.state.view === 'detail' || CS.state.view === 'person') return goBack();
         hideSuggest();
@@ -1125,7 +1496,7 @@
      حزام الأمان
      ============================================================ */
 
-  var REQUIRED = ['util', 'store', 'state', 'taste', 'certs', 'tmdb', 'wiki', 'sources', 'links', 'feed', 'search', 'ui'];
+  var REQUIRED = ['util', 'store', 'state', 'taste', 'certs', 'tmdb', 'wiki', 'sources', 'mySources', 'links', 'feed', 'search', 'ui'];
 
   function fatal(title, detail, showReload) {
     var bar = document.getElementById('fatal');
@@ -1182,9 +1553,9 @@
       if (!TABS[tab]) tab = 'all';
       if (TABS[tab].cert !== 'all' && !CS.store.get(CS.KEYS.adultOn, false)) tab = 'all';
       setTab(tab);
-      CS.store.set(CS.KEYS.certTier, TABS[tab].cert);
-      $('#feed-title').textContent = TABS[tab].title;
-      $('#age-warn').hidden = TABS[tab].cert === 'all';
+      CS.store.set(CS.KEYS.certTier, certFor(tab));
+      $('#feed-title').textContent = titleFor(tab);
+      $('#age-warn').hidden = certFor(tab) === 'all';
     });
 
     var start = CS.hasKey() ? CS.tmdb.loadGenres().catch(function () {}) : Promise.resolve();

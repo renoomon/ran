@@ -66,6 +66,13 @@
            '"><i style="width:' + h.score + '%"></i></div>';
   }
 
+  /* نسبة التطابق مع بحث المستخدم — تظهر في النتائج فقط */
+  function matchBadge(item) {
+    if (!item.matchPct) return '';
+    return '<span class="card__match' + (item.matchPct >= 85 ? ' is-top' : '') + '">مطابق ' +
+      item.matchPct + '٪</span>';
+  }
+
   function voteBar(item, big) {
     var v = CS.taste.verdict(item);
     var k = esc(itemKey(item));
@@ -102,7 +109,7 @@
           '<div class="card__poster">' + posterHtml(item) +
             (item.rating ? '<span class="card__score ' + scoreClass(item.rating) + '">' + item.rating.toFixed(1) + '</span>' : '') +
             '<span class="card__type">' + (TYPE_AR[item.type] || '') + '</span>' +
-            certBadge(item) + heatBar(item) +
+            matchBadge(item) + certBadge(item) + heatBar(item) +
           '</div>' +
           '<div class="card__body">' +
             '<h3 class="card__title">' + esc(item.title) + '</h3>' +
@@ -300,7 +307,10 @@
         '<section id="dt-story">' + storySection(d, extra) + '</section>' +
         heatHtml +
         (provHtml ? '<section><h3 class="sec__title">وين تشوفه <span class="sec__note">(' + esc(CS.state.region) + ')</span></h3>' + provHtml + '</section>' : '') +
-        (trailerHtml ? '<section><h3 class="sec__title">التريلر</h3>' + trailerHtml + '</section>' : '') +
+        '<section id="dt-watch"></section>' +
+        /* المشاهدة تحلّ محلّ التريلر: التريلر ما يظهر إلا لو ما فيه ولا مصدر مضاف */
+        (trailerHtml && !hasWatchSources()
+          ? '<section><h3 class="sec__title">التريلر</h3>' + trailerHtml + '</section>' : '') +
         '<section id="dt-links">' + linksHtml(d) + '</section>' +
         (castHtml ? '<section><h3 class="sec__title">طاقم العمل <span class="sec__note">اضغط أي اسم لأعماله</span></h3>' + castHtml + '</section>' : '') +
         '<section id="dt-extra"></section>' +
@@ -363,7 +373,52 @@
     return '<b>🔴 ما لقيت شي لـ «' + esc(query) + '»</b><p>جرّب كذا:</p><ul><li>' + tips.join('</li><li>') + '</li></ul>';
   }
 
+  /* قسم المشاهدة من مصادر المشغّل */
+  function hasWatchSources() {
+    return !!(CS.mySources && CS.mySources.all().filter(function (s) { return s.enabled; }).length);
+  }
+
+  function watchSection(item, sources, activeId, resolved) {
+    if (!sources.length) {
+      return '<h3 class="sec__title">المشاهدة</h3>' +
+        '<div class="empty" style="padding:1.6rem"><b>🎬 ما فيه مصادر مضافة</b>' +
+        '<p>افتح 🎬 <b>إعدادات المصادر</b> من الأعلى وأضف سيرفراتك، وبتظهر هنا لكل عمل.</p></div>';
+    }
+
+    var active = sources.filter(function (s) { return s.id === activeId; })[0] || sources[0];
+    var missing = CS.mySources.missingFor(active, item);
+
+    var bar = '<div class="watch__bar">' + sources.map(function (s) {
+      var bad = s.status && s.status.ok === false ? ' title="آخر تحقق: فشل"' : '';
+      return '<button class="watch__pick' + (s.id === active.id ? ' is-on' : '') +
+        '" data-watch-src="' + esc(s.id) + '"' + bad + '>' +
+        (s.status ? (s.status.ok ? '🟢 ' : '🔴 ') : '') + esc(s.name) + '</button>';
+    }).join('') + '</div>';
+
+    var body;
+    if (missing.length) {
+      body = '<div class="empty" style="padding:1.4rem">🟡 هذا المصدر يحتاج ' +
+        esc(missing.join(' و')) + '، وما هو متوفر لهذا العمل.</div>';
+    } else if (active.type === 'embed') {
+      body = '<div class="watch__frame"><iframe src="' + esc(CS.mySources.urlFor(active, item)) +
+        '" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture" ' +
+        'referrerpolicy="origin" title="مشاهدة ' + esc(item.title) + '"></iframe></div>';
+    } else if (active.type === 'link') {
+      body = '<div class="watch__bar"><a class="btn" target="_blank" rel="noopener noreferrer" href="' +
+        esc(CS.mySources.urlFor(active, item)) + '">▶️ افتح المشاهدة في ' + esc(active.name) + '</a></div>';
+    } else {
+      body = resolved
+        ? '<div class="watch__frame"><iframe src="' + esc(resolved) +
+          '" allowfullscreen allow="autoplay; encrypted-media" title="مشاهدة"></iframe></div>'
+        : '<div class="empty" style="padding:1.4rem">⏳ أطلب رابط التشغيل من ' + esc(active.name) + '…</div>';
+    }
+
+    return '<h3 class="sec__title">المشاهدة <span class="sec__note">من مصادرك</span></h3>' +
+      '<div class="watch">' + bar + body + '</div>';
+  }
+
   CS.ui = {
+    watchSection: watchSection,
     toast: toast,
     skeletons: skeletons,
     card: card,

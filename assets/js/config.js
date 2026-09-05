@@ -10,7 +10,7 @@ window.CS = window.CS || {};
   /* ---------- الثوابت ---------- */
 
   CS.config = {
-    version: '3.0.0',
+    version: '3.1.0',
     tmdb: {
       base: 'https://api.themoviedb.org/3',
       img: 'https://image.tmdb.org/t/p',
@@ -53,7 +53,9 @@ window.CS = window.CS || {};
     fanartKey: 'cs.fanart_key',
     traktKey:  'cs.trakt_key',
     autoTr:    'cs.auto_tr',
-    tab:       'cs.tab'
+    tab:       'cs.tab',
+    sources:   'cs.my_sources',
+    adultOnly: 'cs.adult_only'
   };
 
   /* ---------- التخزين المحلي (آمن ضد الأوضاع الخاصة) ---------- */
