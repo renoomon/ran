@@ -399,10 +399,12 @@
     var url = CS.mySources.urlFor(active, item);
 
     var bar = '<div class="watch__bar">' + sources.map(function (s) {
-      var bad = s.status && s.status.ok === false ? ' title="آخر تحقق: فشل"' : '';
+      var ok = s.status && s.status.ok;
+      var tip = s.status && s.status.ok === false ? ' title="آخر تحقق: فشل"'
+              : s.status && s.status.ok === null ? ' title="ما قدرت أتحقق منه من المتصفح"' : '';
+      var dot = !s.status ? '' : ok === true ? '🟢 ' : ok === false ? '🔴 ' : '🟡 ';
       return '<button class="watch__pick' + (s.id === active.id ? ' is-on' : '') +
-        '" data-watch-src="' + esc(s.id) + '"' + bad + '>' +
-        (s.status ? (s.status.ok ? '🟢 ' : '🔴 ') : '') + esc(s.name) + '</button>';
+        '" data-watch-src="' + esc(s.id) + '"' + tip + '>' + dot + esc(s.name) + '</button>';
     }).join('') + '</div>';
 
     var body;

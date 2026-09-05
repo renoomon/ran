@@ -1007,11 +1007,15 @@
     if ($('#settings').hidden) document.body.classList.remove('is-locked');
   }
 
+  /* ثلاث حالات لا اثنتين: نجح · فشل · ما قدرت أحكم.
+     الخلط بين «فشل» و«ما قدرت أحكم» يخلّي الموقع يكذب على صاحبه. */
   function statusLine(s, cls) {
     cls = cls || 'srcitem__st';
     if (!s.status) return '<i class="' + cls + '">⚪ ما تحقّقت منه بعد</i>';
-    return '<i class="' + cls + ' ' + (s.status.ok ? 'is-ok' : 'is-bad') + '">' +
-      (s.status.ok ? '🟢 ' : '🔴 ') + esc0(s.status.detail) + '</i>';
+    var ok = s.status.ok;
+    var mark = ok === true ? '🟢 ' : ok === false ? '🔴 ' : '🟡 ';
+    var kind = ok === true ? ' is-ok' : ok === false ? ' is-bad' : ' is-warn';
+    return '<i class="' + cls + kind + '">' + mark + esc0(s.status.detail) + '</i>';
   }
 
   function renderSources() {
@@ -1032,8 +1036,11 @@
           '<b class="srcitem__name">' + esc0(s.name) + '</b>' +
           '<span class="srcitem__type">' + esc0(where) + '</span>' +
         '</div>' +
-        '<code class="srcitem__url" dir="ltr">' + esc0(sampleUrl(s)) + '</code>' +
+        '<a class="srcitem__url" dir="ltr" target="_blank" rel="noopener noreferrer" href="' +
+          esc0(sampleUrl(s)) + '">' + esc0(sampleUrl(s)) + '</a>' +
         statusLine(s) +
+        '<a class="srcitem__try" target="_blank" rel="noopener noreferrer" href="' +
+          esc0(sampleUrl(s)) + '">↗ افتح رابط البحث وجرّبه بنفسك</a>' +
         '<div class="srcitem__acts">' +
           '<button class="btn btn--sm" data-src-test="' + esc0(s.id) + '">تحقق</button>' +
           '<button class="btn btn--sm btn--ghost" data-src-toggle="' + esc0(s.id) + '">' +
@@ -1185,8 +1192,12 @@
       btn.disabled = false;
       btn.textContent = label;
       renderSources();
-      var bad = CS.mySources.all().filter(function (s) { return s.status && !s.status.ok; }).length;
-      CS.ui.toast(bad ? '🟡 ' + bad + ' من المصادر ما نجحت' : '🟢 كل المصادر شغّالة');
+      var list2 = CS.mySources.all();
+      var bad  = list2.filter(function (s) { return s.status && s.status.ok === false; }).length;
+      var warn = list2.filter(function (s) { return s.status && s.status.ok === null; }).length;
+      CS.ui.toast(bad ? '🔴 ' + bad + ' من المصادر فشلت'
+                : warn ? '🟡 ' + warn + ' ما قدرت أحكم عليها — افتح روابطها وجرّبها'
+                : '🟢 كل المصادر شغّالة');
       if (detailCtx) renderWatch();
     });
   }

@@ -324,9 +324,9 @@
     if (src.type === 'site' || src.type === 'embed') {
       return reachable(url).then(function (r) {
         var ms = ' (' + (Date.now() - started) + ' مللي)';
-        if (!r.ok) return mark(src, false, r.detail + ms);
+        if (r.ok !== true) return mark(src, r.ok, r.detail + ms);
         return mark(src, true,
-          'النطاق شغّال ووصلته' + ms + ' · بحث تجريبي: ' + short(url) +
+          'النطاق شغّال ووصلته' + ms +
           ' · يظهر داخل الصفحة ولا يحتاج تبويب؟ يبيّن أول ما تفتح عملًا.');
       });
     }
@@ -363,10 +363,18 @@
       .then(function () { return { ok: true, detail: '' }; })
       .catch(function (err) {
         var m = String(err && err.message || err);
+        /* فشل الطلب المعتم ما يثبت إن الموقع خربان.
+           أسباب شائعة تُفشّل الفحص والموقع نفسه شغّال تمامًا:
+           مانع الإعلانات يحجب طلبات fetch لهذا النطاق دون تصفّحه،
+           وحماية كلاودفلير ترفض الطلبات غير الملاحية،
+           وبعض السيرفرات ترفض Sec-Fetch-Mode: no-cors من أصل غريب.
+           فنرجّع «غير حاسم» لا «فاشل» — والحكم للمستخدم بضغطة على الرابط. */
         return {
-          ok: false,
+          ok: null,
           detail: /Failed to fetch|NetworkError|Load failed/i.test(m)
-            ? 'ما وصلت للنطاق — تأكد من كتابته، أو الموقع واقف، أو الشبكة تحجبه'
+            ? 'ما قدرت أفحصه من المتصفح — وهذا ما يعني إنه خربان. ' +
+              'الأغلب مانع إعلانات أو حماية الموقع تحجب طلب الفحص وحده. ' +
+              'افتح رابط البحث تحت: إذا فتح عندك فالمصدر شغّال واتركه'
             : m
         };
       });

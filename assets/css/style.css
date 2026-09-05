@@ -689,3 +689,10 @@ main{ max-width:1560px; margin-inline:auto; padding:clamp(1rem, 2.5vw, 1.8rem) c
 .watch__video{ position:absolute; inset:0; width:100%; height:100%; background:#000; border:0; }
 .prov__credit{ font-size:.72rem; color:var(--text-3); margin:.5rem 0 0; }
 .prov__credit a{ color:var(--text-2); }
+.srcitem__st.is-warn{ color:#fcd34d; }
+.keyrow__out.is-warn{ color:#fcd34d; }
+a.srcitem__url{ display:block; text-decoration:none; }
+a.srcitem__url:hover{ color:var(--hot); text-decoration:underline; }
+.srcitem__try{ display:inline-block; margin-top:.3rem; font-size:.76rem; font-weight:800;
+  color:var(--hot); text-decoration:none; }
+.srcitem__try:hover{ text-decoration:underline; }
