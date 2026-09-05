@@ -141,6 +141,44 @@
       }
     },
     {
+      id: 'mdblist',
+      name: 'MDBList',
+      site: 'mdblist.com',
+      hint: 'تقييمات مجمّعة من ٧ مصادر بنداء واحد — IMDb وتريكت وليتربوكسد وتوميتوز وميتاكريتيك',
+      keyLabel: 'مفتاح MDBList',
+      needsKey: true,
+      /* التوثيق يقول المفتاح معامل apikey. المسار الحديث أولًا،
+         والقديم بديلًا لأن الخدمة تقبل الاثنين والفحص يحسم أيهما يرد. */
+      url:  'https://api.mdblist.com/imdb/{mtype}/{imdb}?apikey={key}',
+      alt:  'https://api.mdblist.com/?apikey={key}&i={imdb}',
+      test: 'https://api.mdblist.com/imdb/movie/tt1375666?apikey={key}',
+      needs: ['imdb'],
+      pick: function (j) {
+        var d = (j && j.response === false) ? {} : (j || {});
+        /* الردّ يجي إما مصفوفة ratings فيها {source,value,score} أو حقولًا مسطّحة */
+        var by = {};
+        (d.ratings || []).forEach(function (r) {
+          if (r && r.source) by[String(r.source).toLowerCase()] = r.value != null ? r.value : r.score;
+        });
+        function rate(k, suffix) {
+          var v = by[k];
+          return v == null || v === '' ? '' : v + (suffix || '');
+        }
+        return [
+          ['تقييم IMDb', rate('imdb', ' / 10')],
+          ['تريكت', rate('trakt', '٪')],
+          ['ليتربوكسد', rate('letterboxd', ' / 5')],
+          ['روتن توميتوز', rate('tomatoes', '٪')],
+          ['ميتاكريتيك', rate('metacritic', '٪')],
+          ['نقاد روجر إيبرت', rate('rogerebert', ' / 4')],
+          ['التصنيف العمري', d.certification],
+          ['المدة', d.runtime ? d.runtime + ' دقيقة' : '']
+        ];
+      },
+      ok:  function (j) { return !!j && j.response !== false; },
+      err: function (j) { return (j && (j.error || j.Error)) || 'المفتاح مرفوض'; }
+    },
+    {
       id: 'simkl',
       name: 'Simkl',
       site: 'simkl.com',
@@ -275,6 +313,8 @@
       '{type}':      item.type === 'tv' ? 'tv' : 'movie',
       /* Simkl يستخدم movies/tv لا movie/tv */
       '{types}':     item.type === 'tv' ? 'tv' : 'movies',
+      /* MDBList يستخدم show لا tv */
+      '{mtype}':     item.type === 'tv' ? 'show' : 'movie',
       '{title}':     encodeURIComponent(item.originalTitle || item.title || ''),
       '{title_raw}': item.originalTitle || item.title || '',
       '{year}':      item.year || ''
@@ -309,14 +349,27 @@
     var missing = missingFor(src, item);
     if (missing.length) return Promise.resolve({ ok: false, rows: [], detail: 'يحتاج ' + missing.join(' و') });
 
+    var p0 = preset(src.preset);
     var url = fill(src.url, item, src.key);
+    var alt = p0 && p0.alt ? fill(p0.alt, item, src.key) : '';
 
+    return attempt(url, src, alt);
+  }
+
+  /* بعض الخدمات لها مساران للشي نفسه — نجرّب الثاني قبل ما نعلن الفشل */
+  function attempt(url, src, alt) {
     return fetch(url, { headers: headersFor(src) })
       .then(function (r) {
-        if (!r.ok) return { ok: false, rows: [], detail: 'رد بخطأ ' + r.status };
+        if (!r.ok) {
+          if (alt) return attempt(alt, src, '');
+          return { ok: false, rows: [], detail: 'رد بخطأ ' + r.status };
+        }
         return r.json().then(function (j) {
           var p = preset(src.preset);
-          if (p && p.ok && !p.ok(j)) return { ok: false, rows: [], detail: p.err ? p.err(j) : 'رد بلا بيانات' };
+          if (p && p.ok && !p.ok(j)) {
+            if (alt) return attempt(alt, src, '');
+            return { ok: false, rows: [], detail: p.err ? p.err(j) : 'رد بلا بيانات' };
+          }
           var rows = p && p.pick ? p.pick(j) : flatten(j);
           rows = (rows || []).filter(function (r2) {
             return r2 && r2[1] !== undefined && r2[1] !== null && String(r2[1]).trim() !== '' && String(r2[1]) !== '0';
@@ -324,7 +377,10 @@
           return { ok: true, rows: rows, detail: rows.length ? '' : 'رد بنجاح بلا حقول معروضة' };
         });
       })
-      .catch(function (e) { return { ok: false, rows: [], detail: netMsg(e) }; });
+      .catch(function (e) {
+        if (alt) return attempt(alt, src, '');
+        return { ok: false, rows: [], detail: netMsg(e) };
+      });
   }
 
   /* مصدر مخصّص ما نعرف شكله: نسطّح أول حقول بسيطة ونعرضها كما هي */
